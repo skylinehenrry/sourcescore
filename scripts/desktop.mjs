@@ -1,5 +1,5 @@
-import { spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { spawn, spawnSync } from 'node:child_process';
+import { existsSync, mkdirSync, rmSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 const root = fileURLToPath(new URL('..', import.meta.url));
@@ -18,8 +18,12 @@ child.on('exit', code => {
   if (code === 0 && args[0] === 'build' && process.platform === 'darwin') {
     const source = path.join(root, 'src-tauri/target/release/bundle/macos/SourceScore.app');
     if (existsSync(source)) {
-      const copy = spawn('/usr/bin/ditto', [source, path.join(root, 'releases/SourceScore.app')], { stdio: 'inherit' });
-      copy.on('exit', copied => process.exit(copied ?? 1)); return;
+      const signing = spawnSync('/usr/bin/codesign', ['--force', '--deep', '--sign', '-', source], { stdio: 'inherit' });
+      if (signing.status !== 0) process.exit(signing.status ?? 1);
+      const destination = path.join(root, 'releases/SourceScore.app');
+      mkdirSync(path.dirname(destination), { recursive: true }); rmSync(destination, { recursive: true, force: true });
+      const copy = spawnSync('/usr/bin/ditto', [source, destination], { stdio: 'inherit' });
+      process.exit(copy.status ?? 1);
     }
   }
   process.exit(code ?? 1);
