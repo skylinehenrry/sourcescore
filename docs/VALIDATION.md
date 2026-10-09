@@ -8,7 +8,7 @@ This document distinguishes executed checks from outstanding qualification. The 
 | --- | --- |
 | `npm test` | 29 core tests passed, including the private Rachmaninoff regression |
 | `npm run desktop:test` | 8 Rust file-safety tests passed |
-| `PLAYWRIGHT_BROWSERS_PATH="$PWD/.cache/playwright" npm run test:ui` | 20 UI tests passed: ten workflows in Chrome and ten in WebKit |
+| `PLAYWRIGHT_BROWSERS_PATH="$PWD/.cache/playwright" npm run test:ui` | 22 UI tests passed: eleven workflows in Chrome and eleven in WebKit |
 | `npm run build` | TypeScript check and Vite production build passed |
 | `npm run desktop:build` | Apple Silicon native release and `.app` packaging passed |
 | MusicXML 4.0 XSD via `xmllint` | Orchestral fixture and saved F-natural correction validated |
@@ -19,7 +19,7 @@ Core tests cover byte-identical no-op output, BOM/Unicode/CRLF, scalar pitch cha
 
 Native file tests cover exact no-op bytes with no backup, precise changed-save backups, revision refresh, external modifications, malformed save payloads, Save As conflict detection, new/existing targets, backup failure and rejection of Save As over a conflicted original path.
 
-UI tests operate actual engraved SVG note targets. They verify selection, pitch rerendering, persistent source identity, undo/redo, exact downloaded MusicXML, independent chord pitches, multiple selection and keyboard octave changes, explicit duration confirmation, exact fractional-tick engraving without changing saved decimals, vertical dragging, diagnostic navigation/highlighting, measure/instrument isolation/zoom, invalid-input recovery and navigation through the private Rachmaninoff excerpt. A separate 20-part/1,000-measure UI test opens 122,250 events, navigates to measure 1,000, asserts the selected note is actually in the viewport and corrects that note. The complete large-score workflow passed in 6.5 seconds in Chrome and 8.6 seconds in WebKit in the recorded run.
+UI tests operate actual engraved SVG note targets. They verify selection, pitch rerendering, persistent source identity, undo/redo, exact downloaded MusicXML, independent chord pitches (including overlapping click targets at 50% zoom), multiple selection and keyboard octave changes, explicit duration confirmation, exact fractional-tick engraving without changing saved decimals, vertical dragging, diagnostic navigation/highlighting, measure/instrument isolation/zoom, invalid-input recovery and navigation through the private Rachmaninoff excerpt. A separate 20-part/1,000-measure UI test opens 122,250 events, navigates to measure 1,000, asserts the selected note is actually in the viewport and corrects that note. The complete large-score workflow passed in 6.5 seconds in Chrome and 8.6 seconds in WebKit in the recorded run.
 
 ## Native application smoke evidence
 

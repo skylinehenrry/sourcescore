@@ -66,14 +66,21 @@ export default function ScoreView(props: Props) {
             onPointerDown={event => {
               if (event.button !== 0) return;
               event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId);
-              drag.current = { id: target.id, y: event.clientY, pointer: event.pointerId };
-              props.onSelect(target.id, event.metaKey || event.ctrlKey, event.shiftKey);
+              // Comfortable click targets overlap in dense chords at low zoom.
+              // Choose the nearest measured glyph center, whose source identity is explicit.
+              const bounds = notation.current!.getBoundingClientRect();
+              const x = event.clientX - bounds.left, y = event.clientY - bounds.top;
+              const candidates = targets.filter(t => x >= t.left && x <= t.left + t.width && y >= t.top && y <= t.top + t.height);
+              const distance = (t: HitTarget) => (x - t.left - t.width / 2) ** 2 + (y - t.top - t.height / 2) ** 2;
+              const picked = candidates.reduce((best, candidate) => distance(candidate) < distance(best) ? candidate : best, target);
+              drag.current = { id: picked.id, y: event.clientY, pointer: event.pointerId };
+              props.onSelect(picked.id, event.metaKey || event.ctrlKey, event.shiftKey);
             }}
             onPointerUp={event => {
               const started = drag.current; drag.current = undefined;
-              if (!started || started.id !== target.id) return;
+              if (!started || started.pointer !== event.pointerId) return;
               const delta = Math.round((started.y - event.clientY) / (5 * props.zoom));
-              if (Math.abs(event.clientY - started.y) >= 5 && delta && note.pitch) props.onDrag(target.id, delta);
+              if (Math.abs(event.clientY - started.y) >= 5 && delta && noteMap.get(started.id)?.pitch) props.onDrag(started.id, delta);
             }}
             onPointerCancel={() => { drag.current = undefined; }} />;
         })}

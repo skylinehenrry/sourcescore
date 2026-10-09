@@ -45,6 +45,15 @@ test('chord noteheads map independently, keyboard editing and multi-selection wo
   await expect(page.getByTestId('selected-pitch')).toHaveText('C6');
   const output = await download(page); expect(changedEvents(parseScore(readFileSync(fixture, 'utf8')), parseScore(output))).toEqual(['3:0:1', '3:0:2']);
 });
+test('overlapping chord click targets at 50 percent zoom select the intended glyph', async ({ page }) => {
+  await openExample(page);
+  for (let i = 0; i < 4; i++) await page.getByRole('button', { name: 'Zoom out' }).click();
+  await expect(page.locator('.zoom-label')).toHaveText('50%'); await expect(page.getByTestId('note-overlay')).toHaveAttribute('aria-busy', 'false');
+  const box = await page.locator('[data-note-id="3:0:1"]').boundingBox(); expect(box).not.toBeNull();
+  await page.mouse.click(box!.x + box!.width / 2, box!.y + box!.height / 2); await expect(page.getByTestId('selected-pitch')).toHaveText('A4');
+  await page.getByRole('button', { name: 'Flat', exact: true }).click(); await expect(page.getByTestId('selected-pitch')).toHaveText('A♭4');
+  expect(changedEvents(parseScore(readFileSync(fixture, 'utf8')), parseScore(await download(page)))).toEqual(['3:0:1']);
+});
 test('duration workflow is explicit and keeps the measure balanced', async ({ page }) => {
   await openExample(page); await page.locator('[data-note-id="0:0:0"]').click(); await page.getByRole('button', { name: 'eighth note (4)' }).click();
   await expect(page.getByRole('dialog')).toContainText('following rest'); await page.getByRole('button', { name: 'Apply duration change' }).click();

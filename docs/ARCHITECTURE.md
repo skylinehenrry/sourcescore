@@ -34,6 +34,8 @@ Sources checked during development:
 
 Each graphical note's chord index identifies its individual SVG notehead. Overlay hit targets use that notehead's actual bounds, including after zoom or rerender. Selection colors only the intended head. Unmapped events are reported and have no edit target; there is no positional or nearest-pitch guess. Engraving SVG paths are hidden from the accessibility tree because overlay buttons provide descriptive musical labels. This also avoids costly native AX traversal of thousands of decorative paths.
 
+At small zoom levels, enlarged click targets can overlap even when the underlying noteheads are distinct. Pointer hit testing then chooses the nearest measured glyph center among those targets. Each candidate already carries its exact source identity; musical pitch or XML chronology is never used to infer that identity. A 50% zoom chord regression verifies the intended glyph and saved source event.
+
 The current renderer supports full-score and instrument-isolated windows. Source layout metadata stays on disk even when a desktop presentation overrides page breaks or multi-measure rest compression for navigation. No OSMD MusicXML export or proprietary intermediate score format is used.
 
 OSMD reads divisions/duration values as integers. The separate presentation copy therefore scales division-based timing quantities (including offsets and note attack/release) by an exact common rational factor to fit safe integers. Musical time stays unchanged because duration and divisions share the same factor. The saved source retains its original decimal values. A renderer-range overflow is rejected explicitly. Fractional-tick rendering, no-op bytes and independent pitch saving are exercised in Chrome and WebKit.
