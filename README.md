@@ -45,8 +45,8 @@ Original-file hashes are checked before and immediately before replacement; Save
 ## Current limits
 
 - UTF-8, uncompressed, score-partwise documents only. `.mxl`, score-timewise, non-UTF-8 encodings and custom XML entity declarations are rejected without modifying the input.
-- Pitch changes of tied notes and microtones are blocked. Courtesy-accidental creation/removal is not exposed as a separate operation.
-- Duration changes of tuplets, grace notes, ties, beamed groups, unequal-duration chords and whole-measure rests are blocked. Fractional numeric fields can be read exactly; the duration editor currently writes integer ticks only.
+- Pitch changes of tied notes, microtones and explicit fret encodings are blocked. Courtesy-accidental creation/removal is not exposed as a separate operation.
+- Duration changes of tuplets, tremolos, grace notes, ties, beamed groups, unequal-duration chords and whole-measure rests are blocked. Fractional numeric fields can be read exactly; the duration editor currently writes integer ticks only.
 - No insertion/deletion, rest splitting, tie-chain editing, independent slur/articulation/dynamics/clef/key/time editing or coordinated divisions/backup/forward changes. These elements remain preserved through unrelated supported edits.
 - Cross-staff source is interpreted and preserved; dense cross-staff engraving still depends on OSMD and needs broader visual regression testing. Its display is not identical to MuseScore/Dorico engraving, and renderer-unsupported symbols can be absent from the view while remaining in the source.
 - Validation covers supported note structure and temporal rules, not the complete MusicXML XSD or every legal irregular measure. Written/sounding duration differences are advisory outside tuplets; cross-staff/partial-voice/implicit/non-controlling/free-time completeness checks are conservative. Tie checks detect some unmatched stops, not all invalid chains. Instrument transposition is shown in semitones; exotic per-staff/nontraditional key signatures need further work.
@@ -79,4 +79,4 @@ See `docs/VALIDATION.md` for executed results, `docs/ARCHITECTURE.md` for implem
 2. Add explicit rest insertion/splitting and coordinated beaming/tuplet/tie operations with source-byte and event-isolation regression tests.
 3. Implement incremental measure parsing, smaller worker snapshots and cached page/system layout to reduce large-score edit latency.
 4. Strengthen staff-specific transposition, nontraditional keys, irregular-measure/tie validation and optional schema diagnostics.
-5. Finish packaged-app lifecycle/conflict/save/reopen regression coverage, crash recovery, accessibility keyboard focus and distribution signing/notarization.
+5. Automate native lifecycle coverage across OS versions, add crash recovery and accessibility keyboard focus, and finish distribution signing/notarization.

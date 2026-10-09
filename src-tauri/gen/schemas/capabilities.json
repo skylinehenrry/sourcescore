@@ -1,1 +1,0 @@
-{"main":{"identifier":"main","description":"Local score editing, native dialogs and window lifecycle.","local":true,"windows":["main"],"permissions":["core:default","dialog:allow-open","dialog:allow-save","dialog:allow-message","dialog:allow-confirm","core:window:allow-set-title","core:window:allow-close"]}}

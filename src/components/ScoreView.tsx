@@ -44,10 +44,11 @@ export default function ScoreView(props: Props) {
   }, [props.engine, props.score.revision, props.start, props.count, props.partId, props.zoom]);
   useEffect(() => { renderer.current?.select(props.selection); }, [props.selection]);
   useEffect(() => {
-    if (!props.focusPart) return;
-    const target = targets.find(t => t.partId === props.focusPart);
-    if (target) notation.current?.parentElement?.querySelector(`[data-note-id="${target.id}"]`)?.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' });
-  }, [props.focusPart, targets]);
+    const selectedId = [...props.selection].at(-1);
+    const selected = targets.find(t => t.id === selectedId && (!props.focusPart || t.partId === props.focusPart));
+    const target = selected ?? (props.focusPart ? targets.find(t => t.partId === props.focusPart) : undefined);
+    if (target) notation.current?.parentElement?.querySelector(`[data-note-id="${target.id}"]`)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }, [props.focusPart, props.selection, targets]);
   const noteMap = new Map(props.score.notes.map(n => [n.id, n]));
   return <div className="score-viewport" aria-label="Engraved score">
     {loading && <div className="render-loading" role="status"><LoaderCircle size={18} className="spin"/> Engraving measures…</div>}

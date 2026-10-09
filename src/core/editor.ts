@@ -76,6 +76,7 @@ export class ScoreDocument {
       const note = this.note(id);
       this.unambiguous(note);
       if (!note.pitch) throw new ScoreError('Select a pitched note to change its pitch.');
+      if (note.fretted) throw new ScoreError('This pitch has an explicit tablature fret. Coordinating pitch and fret changes is not supported yet.');
       if (note.ties.length || note.tiedNotation) throw new ScoreError('This note belongs to a tie. Editing a complete tie chain is not supported yet; no pitches were changed.');
       if (!Number.isInteger(note.pitch.alter) || !accidentalNames[note.pitch.alter]) throw new ScoreError('Microtonal pitch editing is not supported. The original spelling is preserved.');
       if (!steps.includes(pitch.step) || !Number.isInteger(pitch.octave) || pitch.octave < 0 || pitch.octave > 9 || !accidentalNames[pitch.alter]) throw new ScoreError('Choose a written pitch from octave 0–9 with a natural, sharp, flat or double accidental.');
@@ -129,7 +130,7 @@ export class ScoreDocument {
     const measure = this.model.parts.find(p => p.id === note.partId)!.measures[note.measureIndex];
     const group = measure.notes.filter(n => n.chordRoot === note.chordRoot);
     group.forEach(n => this.unambiguous(n));
-    if (group.some(n => n.grace || n.ratio || n.ties.length || n.tiedNotation || n.beams || n.fullMeasureRest)) throw new ScoreError('Duration editing of grace notes, tuplets, ties, beamed groups and whole-measure rests requires coordinated notation changes. These rhythms are preserved in this version.');
+    if (group.some(n => n.grace || n.ratio || n.linkedRhythm || n.ties.length || n.tiedNotation || n.beams || n.fullMeasureRest)) throw new ScoreError('Duration editing of grace notes, tuplets, tremolos, ties, beamed groups and whole-measure rests requires coordinated notation changes. These rhythms are preserved in this version.');
     if (group.some(n => !n.duration.equals(group[0].duration) || !n.divisions.equals(note.divisions))) throw new ScoreError('Unequal chord durations cannot be changed safely.');
     const desired = notatedTime(type, dots)!;
     const ticks = desired.mul(note.divisions);
@@ -140,7 +141,7 @@ export class ScoreDocument {
     let description = `Change ${group.length > 1 ? `all ${group.length} notes in this chord` : note.rest ? 'this rest' : 'this note'} to ${durationText(type, dots).toLowerCase()}.`;
     if (delta.n !== 0n) {
       const next = measure.notes[group.at(-1)!.index + 1];
-      if (!next || !next.rest || next.chord || next.grace || next.ratio || next.beams || next.fullMeasureRest || next.voice !== note.voice || next.staff !== group[0].staff || next.segment !== note.segment || !next.onset.equals(group[0].onset.add(group[0].duration))) {
+      if (!next || !next.rest || next.chord || next.grace || next.ratio || next.linkedRhythm || next.beams || next.fullMeasureRest || next.voice !== note.voice || next.staff !== group[0].staff || next.segment !== note.segment || !next.onset.equals(group[0].onset.add(group[0].duration))) {
         throw new ScoreError(`${delta.positive ? 'Lengthening' : 'Shortening'} this event would change the timing of later events or leave the measure unbalanced. Select an event followed immediately by an ordinary rest in the same voice. No rhythm was changed.`);
       }
       this.unambiguous(next);
@@ -163,7 +164,7 @@ export class ScoreDocument {
     const note = this.note(id), measure = this.model.parts.find(p => p.id === note.partId)!.measures[note.measureIndex];
     const group = measure.notes.filter(n => n.chordRoot === note.chordRoot);
     group.forEach(n => this.unambiguous(n));
-    if (group.some(n => n.ties.length || n.tiedNotation || n.ratio || n.beams || n.grace)) throw new ScoreError('This voice assignment has linked notation and cannot be changed safely yet.');
+    if (group.some(n => n.ties.length || n.tiedNotation || n.ratio || n.linkedRhythm || n.beams || n.grace)) throw new ScoreError('This voice assignment has linked notation and cannot be changed safely yet.');
     if (measure.notes.some(n => !group.includes(n) && !n.grace && n.voice === voice && n.onset.compare(note.onset.add(note.duration)) < 0 && n.onset.add(n.duration).compare(note.onset) > 0)) throw new ScoreError('Another event overlaps this time in the target voice. The assignment was not changed.');
     this.commit({ label: `Assign voice ${voice}`, description: '', revision: this.revision, ids: group.map(n => n.id), patches: group.map(n => setField(this.source, n.node, 'voice', voice, noteOrder, 'Voice assignment')) });
   }

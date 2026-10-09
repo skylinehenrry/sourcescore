@@ -165,4 +165,18 @@ mod tests {
         let grant = prepare_save_as(&state, path.to_str().unwrap()).unwrap(); save_as(&state, &grant, None, &XML.replace("preserve", "new")).unwrap();
         assert_eq!(fs::read_dir(folder.path().join(".sourcescore-backups")).unwrap().count(), 1);
     }
+    #[test] fn backup_failure_preserves_original() {
+        let folder = tempfile::tempdir().unwrap(); let path = folder.path().join("test.xml"); fs::write(&path, XML).unwrap();
+        fs::write(folder.path().join(".sourcescore-backups"), "occupied").unwrap();
+        let result = atomic_save(&path, &digest(XML.as_bytes()), XML.replace("preserve", "edited").as_bytes());
+        assert!(result.unwrap_err().contains("Backup creation failed")); assert_eq!(fs::read(path).unwrap(), XML.as_bytes());
+    }
+    #[test] fn save_as_cannot_bypass_an_original_file_conflict() {
+        let folder = tempfile::tempdir().unwrap(); let path = folder.path().join("test.xml"); fs::write(&path, XML).unwrap();
+        let state = FileState::default(); let loaded = open(&state, path.to_str().unwrap()).unwrap();
+        fs::write(&path, XML.replace("preserve", "external")).unwrap(); assert!(changed(&state, &loaded.session_id).unwrap());
+        let grant = prepare_save_as(&state, path.to_str().unwrap()).unwrap();
+        assert!(save_as(&state, &grant, Some(&loaded.session_id), XML).unwrap_err().contains("different destination"));
+        assert!(fs::read_to_string(path).unwrap().contains("external"));
+    }
 }

@@ -15,6 +15,7 @@ export interface ScoreNote {
   divisions: Rational; type: string; dots: number; accidental: string; segment: number;
   ratio?: { actual: number; normal: number }; keyFifths: number; transpose: number;
   ties: string[]; tiedNotation: boolean; beams: boolean; fullMeasureRest: boolean;
+  linkedRhythm: boolean; fretted: boolean;
 }
 export interface ScoreMeasure {
   id: string; partId: string; index: number; number: string; node: XmlElement;
@@ -123,6 +124,7 @@ export function parseScore(source: string): ScoreModel {
             ratio, keyFifths: keyState.get(staff) ?? keyState.get(0) ?? 0, transpose,
             ties: children(element, 'tie').map(t => t.attributes.type), tiedNotation: descendant(element, 'tied'),
             beams: children(element, 'beam').length > 0, fullMeasureRest: child(element, 'rest')?.attributes.measure === 'yes',
+            linkedRhythm: descendant(element, 'tuplet') || descendant(element, 'tremolo'), fretted: descendant(element, 'fret'),
           };
           measure.notes.push(note); score.notes.set(noteId, note); part.staves = Math.max(part.staves, staff);
           const singular = ['pitch', 'rest', 'unpitched', 'duration', 'voice', 'type', 'accidental', 'time-modification', 'staff', 'chord', 'grace'];

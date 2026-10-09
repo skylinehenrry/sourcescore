@@ -76,6 +76,14 @@ describe('Source preservation and safe editing', () => {
     const micro = new ScoreDocument(balanced().replace('<alter>1</alter>', '<alter>0.5</alter>'));
     expect(() => micro.setAccidental(['0:0:0'], 0)).toThrow(/Microtonal/);
   });
+  test('linked tuplets/tremolos and explicit fret encodings are safely guarded', () => {
+    for (const notation of ['<tuplet type="start"/>', '<ornaments><tremolo type="start">2</tremolo></ornaments>']) {
+      const source = balanced().replace('<notations>', `<notations>${notation}`); const doc = new ScoreDocument(source);
+      expect(() => doc.planDuration('0:0:0', 'eighth', 0)).toThrow(/coordinated/); expect(doc.source).toBe(source);
+    }
+    const source = balanced().replace('<notations>', '<notations><technical><string>1</string><fret>2</fret></technical>'); const doc = new ScoreDocument(source);
+    expect(() => doc.setAccidental(['0:0:0'], 0)).toThrow(/fret/); expect(doc.source).toBe(source);
+  });
   test('unknown namespaces, CDATA, comments, quote styles and layout survive an unrelated edit', () => {
     const source = balanced().replace('version="4.0"', "version='4.0' xmlns:x='urn:test'").replace('<part-list>', '<defaults><scaling><millimeters>7</millimeters><tenths>40</tenths></scaling></defaults><x:metadata key=\"&gt;\"><![CDATA[a < b]]></x:metadata><part-list>');
     const doc = new ScoreDocument(source); doc.setAccidental(['0:0:0'], 0);
