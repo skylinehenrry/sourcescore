@@ -95,6 +95,7 @@ export class ScoreDocument {
       const note = this.note(id); if (!note.pitch) continue;
       const absolute = note.pitch.octave * 7 + steps.indexOf(note.pitch.step) + (octave ? delta * 7 : delta);
       const step = steps[((absolute % 7) + 7) % 7];
+      if (!octave && step !== note.pitch.step && (note.nonTraditionalKey || !Number.isInteger(note.keyFifths))) throw new ScoreError('This key signature needs an explicit pitch choice. Use the step and accidental controls; automatic diatonic movement is unavailable for this key.');
       updates.set(id, { step, octave: Math.floor(absolute / 7), alter: octave || step === note.pitch.step ? note.pitch.alter : keyAlteration(note.keyFifths, step) });
     }
     this.editPitches(updates);

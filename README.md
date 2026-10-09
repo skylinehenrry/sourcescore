@@ -45,7 +45,7 @@ Original-file hashes are checked before and immediately before replacement; Save
 ## Current limits
 
 - UTF-8, uncompressed, score-partwise documents only. `.mxl`, score-timewise, non-UTF-8 encodings and custom XML entity declarations are rejected without modifying the input.
-- Pitch changes of tied notes, microtones and explicit fret encodings are blocked. Courtesy-accidental creation/removal is not exposed as a separate operation.
+- Pitch changes of tied notes, microtones and explicit fret encodings are blocked. Automatic diatonic movement in nontraditional keys is blocked; explicit step/accidental choices remain available. Courtesy-accidental creation/removal is not exposed as a separate operation.
 - Duration changes of tuplets, tremolos, grace notes, ties, beamed groups, unequal-duration chords and whole-measure rests are blocked. Fractional numeric fields can be read exactly; the duration editor currently writes integer ticks only.
 - No insertion/deletion, rest splitting, tie-chain editing, independent slur/articulation/dynamics/clef/key/time editing or coordinated divisions/backup/forward changes. These elements remain preserved through unrelated supported edits.
 - Cross-staff source is interpreted and preserved; dense cross-staff engraving still depends on OSMD and needs broader visual regression testing. Its display is not identical to MuseScore/Dorico engraving, and renderer-unsupported symbols can be absent from the view while remaining in the source.

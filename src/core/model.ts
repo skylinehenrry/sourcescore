@@ -15,7 +15,7 @@ export interface ScoreNote {
   divisions: Rational; type: string; dots: number; accidental: string; segment: number;
   ratio?: { actual: number; normal: number }; keyFifths: number; transpose: number;
   ties: string[]; tiedNotation: boolean; beams: boolean; fullMeasureRest: boolean;
-  linkedRhythm: boolean; fretted: boolean;
+  linkedRhythm: boolean; fretted: boolean; nonTraditionalKey: boolean;
 }
 export interface ScoreMeasure {
   id: string; partId: string; index: number; number: string; node: XmlElement;
@@ -47,6 +47,7 @@ export function parseScore(source: string): ScoreModel {
     let divisions = new Rational(1), hasDivisions = false, transpose = 0;
     const timeState = new Map<number, Rational | undefined>();
     const keyState = new Map<number, number>();
+    const nonTraditionalKeys = new Map<number, boolean>();
     const attributeState = new Map<string, string>();
     for (const [measureIndex, measureNode] of children(partNode, 'measure').entries()) {
       const measure: ScoreMeasure = { id: `${partIndex}:${measureIndex}`, partId: id, index: measureIndex, number: measureNode.attributes.number ?? String(measureIndex + 1), node: measureNode, notes: [], expected: new Map(timeState), irregular: measureNode.attributes.implicit === 'yes' || measureNode.attributes['non-controlling'] === 'yes', renderAttributes: [...attributeState.values()], extent: ZERO };
@@ -77,7 +78,7 @@ export function parseScore(source: string): ScoreModel {
             }
             if (attribute.local === 'staves') part.staves = Math.max(part.staves, Number(value(source, attribute)) || 1);
             if (attribute.local === 'transpose') transpose = Number(field(source, attribute, 'chromatic', '0')) + 12 * Number(field(source, attribute, 'octave-change', '0'));
-            if (attribute.local === 'key') keyState.set(number, Number(field(source, attribute, 'fifths', '0')));
+            if (attribute.local === 'key') { keyState.set(number, Number(field(source, attribute, 'fifths', '0'))); nonTraditionalKeys.set(number, !child(attribute, 'fifths')); }
             if (attribute.local === 'time') {
               if (child(attribute, 'senza-misura') || child(attribute, 'interchangeable')) timeState.set(number, undefined);
               else {
@@ -125,6 +126,7 @@ export function parseScore(source: string): ScoreModel {
             ties: children(element, 'tie').map(t => t.attributes.type), tiedNotation: descendant(element, 'tied'),
             beams: children(element, 'beam').length > 0, fullMeasureRest: child(element, 'rest')?.attributes.measure === 'yes',
             linkedRhythm: descendant(element, 'tuplet') || descendant(element, 'tremolo'), fretted: descendant(element, 'fret'),
+            nonTraditionalKey: nonTraditionalKeys.get(staff) ?? nonTraditionalKeys.get(0) ?? false,
           };
           measure.notes.push(note); score.notes.set(noteId, note); part.staves = Math.max(part.staves, staff);
           const singular = ['pitch', 'rest', 'unpitched', 'duration', 'voice', 'type', 'accidental', 'time-modification', 'staff', 'chord', 'grace'];
@@ -181,7 +183,8 @@ export function parseScore(source: string): ScoreModel {
 
 export const keyAlteration = (fifths: number, step: Step) => {
   const order = fifths > 0 ? ['F', 'C', 'G', 'D', 'A', 'E', 'B'] : ['B', 'E', 'A', 'D', 'G', 'C', 'F'];
-  return order.slice(0, Math.min(7, Math.abs(fifths))).includes(step) ? Math.sign(fifths) : 0;
+  const total = Math.abs(fifths);
+  return Math.sign(fifths) * (Math.floor(total / 7) + (order.indexOf(step) < total % 7 ? 1 : 0));
 };
 export function normalizedEvents(score: ScoreModel) {
   return [...score.notes.values()].map(n => ({ id: n.id, part: n.partId, measure: n.measureNumber, staff: n.staff, voice: n.voice, onset: n.onset.toString(), duration: n.duration.toString(), pitch: n.pitch, transpose: n.transpose, keyFifths: n.keyFifths, accidental: n.accidental, rest: n.rest, grace: n.grace, chord: n.chord, type: n.type, dots: n.dots, ratio: n.ratio, ties: n.ties }));

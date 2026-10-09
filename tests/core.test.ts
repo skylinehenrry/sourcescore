@@ -70,6 +70,13 @@ describe('Source preservation and safe editing', () => {
     expect(doc.note('0:0:0').transpose).toBe(-2); doc.respell('0:0:0'); expect(doc.note('0:0:0').pitch).toEqual({ step: 'G', alter: -1, octave: 4 });
     expect(doc.source).toContain('<chromatic>-2</chromatic>'); doc.movePitch(['0:0:0'], 1, true); expect(doc.note('0:0:0').pitch?.alter).toBe(-1);
   });
+  test('extended fifth signatures are exact, and nontraditional keys never receive guessed pitches', () => {
+    const extended = new ScoreDocument(balanced().replace('<fifths>1</fifths>', '<fifths>8</fifths>'));
+    extended.movePitch(['0:0:2'], -1); expect(extended.note('0:0:2').pitch).toEqual({ step: 'F', alter: 2, octave: 4 });
+    const source = balanced().replace('<fifths>1</fifths>', '<key-step>F</key-step><key-alter>1</key-alter>'); const doc = new ScoreDocument(source);
+    expect(() => doc.movePitch(['0:0:0'], 1)).toThrow(/explicit pitch choice/); expect(doc.source).toBe(source);
+    doc.editPitches(new Map([['0:0:0', { step: 'G', alter: -1, octave: 4 }]])); expect(doc.note('0:0:0').pitch?.alter).toBe(-1); expect(doc.source).toContain('<key-step>F</key-step><key-alter>1</key-alter>');
+  });
   test('ties and microtones are preserved and unsafe edits are rejected', () => {
     const source = balanced().replace('<notations>', '<tie type="start"/><notations>'); const doc = new ScoreDocument(source);
     expect(() => doc.movePitch(['0:0:0'], 1)).toThrow(/tie/); expect(doc.source).toBe(source);

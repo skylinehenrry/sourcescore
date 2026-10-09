@@ -6,7 +6,7 @@ This document distinguishes executed checks from outstanding qualification. The 
 
 | Check | Executed result |
 | --- | --- |
-| `npm test` | 27 core tests passed, including the private Rachmaninoff regression |
+| `npm test` | 28 core tests passed, including the private Rachmaninoff regression |
 | `npm run desktop:test` | 8 Rust file-safety tests passed |
 | `PLAYWRIGHT_BROWSERS_PATH="$PWD/.cache/playwright" npm run test:ui` | 18 UI tests passed: nine workflows in Chrome and nine in WebKit |
 | `npm run build` | TypeScript check and Vite production build passed |
