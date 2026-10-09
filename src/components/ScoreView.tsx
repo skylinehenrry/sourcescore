@@ -26,7 +26,7 @@ export default function ScoreView(props: Props) {
   }, []);
   useEffect(() => {
     let cancelled = false;
-    setLoading(true); setTargets([]); setError('');
+    setLoading(true); setTargets([]); setError(''); callbacks.current.onReady(0);
     const run = async () => {
       if (cancelled) return;
       try {
@@ -59,7 +59,7 @@ export default function ScoreView(props: Props) {
         {targets.map(target => {
           const note = noteMap.get(target.id)!, part = props.score.parts.find(p => p.id === note.partId)!;
           return <button key={target.id} type="button" tabIndex={-1} data-note-id={target.id}
-            aria-label={`${pitchText(note.pitch)}, ${part.name}, measure ${note.measureNumber}, staff ${note.staff}, voice ${note.voice}`}
+            aria-label={`${note.unpitched ? 'Unpitched note' : pitchText(note.pitch)}, ${part.name}, measure ${note.measureNumber}, staff ${note.staff}, voice ${note.voice}`}
             aria-pressed={props.selection.has(target.id)} disabled={props.pending || loading}
             className={`note-hit ${props.selection.has(target.id) ? 'selected' : ''} ${props.score.diagnostics.some(d => d.noteId === target.id || (d.measureIndex === note.measureIndex && d.partId === note.partId && !d.noteId && (!d.staff || d.staff === note.staff))) ? 'issue' : ''}`}
             style={{ left: target.left, top: target.top, width: target.width, height: target.height }}
