@@ -1,0 +1,18 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "SourceScore",
+  "version": "0.1.0",
+  "identifier": "local.sourcescore.editor",
+  "build": { "beforeDevCommand": "npm run dev", "devUrl": "http://127.0.0.1:1420", "beforeBuildCommand": "npm run build", "frontendDist": "../dist" },
+  "app": {
+    "windows": [{ "title": "SourceScore", "width": 1440, "height": 940, "minWidth": 1060, "minHeight": 680, "titleBarStyle": "Overlay", "hiddenTitle": true }],
+    "security": { "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src ipc: http://ipc.localhost; object-src 'none'" }
+  },
+  "bundle": {
+    "active": true, "targets": ["app"], "category": "Music",
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"],
+    "shortDescription": "Correct MusicXML scores with local source edits.",
+    "macOS": { "minimumSystemVersion": "13.0" },
+    "fileAssociations": [{ "ext": ["musicxml", "xml"], "name": "MusicXML score", "role": "Editor", "mimeType": "application/vnd.recordare.musicxml+xml" }]
+  }
+}

@@ -1,0 +1,96 @@
+import { OpenSheetMusicDisplay, type Note, type VexFlowGraphicalNote } from 'opensheetmusicdisplay';
+import type { RenderSlice, ViewNote } from '../core/session';
+import { ScoreError } from '../core/xml';
+
+export interface HitTarget { id: string; left: number; top: number; width: number; height: number; partId: string }
+/** Injectable renderer-only colors carry identity through OSMD's reader, before restoring actual colors. */
+export class ScoreRenderer {
+  private osmd: OpenSheetMusicDisplay;
+  private graphical = new Map<string, { note: VexFlowGraphicalNote; head?: HTMLElement }>();
+  private originalColors = new Map<string, string>();
+  private stemColors = new Map<string, string>();
+  constructor(private container: HTMLDivElement) {
+    this.osmd = new OpenSheetMusicDisplay(container, {
+      backend: 'svg', autoResize: false, drawTitle: false, drawSubtitle: false,
+      drawComposer: false, drawLyricist: false, drawCredits: false,
+      drawPartNames: true, drawMeasureNumbers: true, drawMeasureNumbersOnlyAtSystemStart: false,
+      newSystemFromXML: false, newPageFromXML: false, pageFormat: 'Endless',
+    });
+    this.osmd.EngravingRules.RenderSingleHorizontalStaffline = false;
+    this.osmd.EngravingRules.RenderMultipleRestMeasures = false;
+    this.osmd.EngravingRules.RenderMeasureNumbers = true;
+    this.osmd.EngravingRules.RenderMeasureNumbersOnlyAtSystemStart = false;
+    this.osmd.EngravingRules.UseXMLMeasureNumbers = true;
+  }
+  async render(slice: RenderSlice, notes: Map<string, ViewNote>, zoom: number) {
+    const xml = new DOMParser().parseFromString(slice.xml, 'application/xml');
+    if (xml.querySelector('parsererror')) throw new ScoreError('Could not prepare the graphical view. The original source is intact.');
+    const actualParts = [...xml.documentElement.children].filter(e => e.localName === 'part');
+    const actualPartIds = new Set(actualParts.map(p => p.getAttribute('id')));
+    const partList = [...xml.documentElement.children].find(e => e.localName === 'part-list');
+    if (partList) {
+      const partial = [...partList.children].filter(e => e.localName === 'score-part').length !== actualPartIds.size;
+      for (const entry of [...partList.children]) if ((entry.localName === 'score-part' && !actualPartIds.has(entry.getAttribute('id'))) || (partial && entry.localName === 'part-group')) entry.remove();
+    }
+    const elements = actualParts.flatMap(p => [...p.children].filter(m => m.localName === 'measure').flatMap(m => [...m.children].filter(n => n.localName === 'note' && n.namespaceURI === xml.documentElement.namespaceURI)));
+    if (elements.length !== slice.noteIds.length) throw new ScoreError('The graphical note mapping is incomplete. Editing this view has been disabled.');
+    const markerToId = new Map<string, string>();
+    this.originalColors.clear(); this.stemColors.clear();
+    elements.forEach((element, i) => {
+      const id = slice.noteIds[i], color = '#' + (i + 1).toString(16).padStart(6, '0').toUpperCase();
+      const notehead = [...element.children].find(c => c.localName === 'notehead');
+      const stem = [...element.children].find(c => c.localName === 'stem');
+      this.originalColors.set(id, notehead?.getAttribute('color') ?? element.getAttribute('color') ?? '#24262b');
+      this.stemColors.set(id, stem?.getAttribute('color') ?? element.getAttribute('color') ?? '#24262b');
+      element.setAttribute('color', color); if (notehead) notehead.setAttribute('color', color);
+      markerToId.set(color, id);
+    });
+    // Inherited defaults may contain source page widths unsuitable for a desktop window.
+    for (const element of [...xml.getElementsByTagName('*')]) {
+      if (element.localName === 'print') { element.removeAttribute('new-system'); element.removeAttribute('new-page'); }
+      if (element.localName === 'multiple-rest') element.remove();
+    }
+    await this.osmd.load(xml);
+    const mapped = new Map<Note, string>();
+    for (const measure of this.osmd.Sheet.SourceMeasures) for (const vertical of measure.VerticalSourceStaffEntryContainers) for (const staff of vertical.StaffEntries) {
+      if (!staff) continue;
+      for (const voice of staff.VoiceEntries) for (const note of voice.Notes) {
+        const id = markerToId.get(note.NoteheadColorXml?.toUpperCase());
+        if (!id) continue;
+        mapped.set(note, id);
+        const color = this.originalColors.get(id)!;
+        note.NoteheadColor = color; note.NoteheadColorXml = color;
+        // Marker color was also read as a stem color; restore it before engraving.
+        note.StemColorXml = this.stemColors.get(id)!; note.ParentVoiceEntry.StemColor = this.stemColors.get(id)!;
+      }
+    }
+    this.osmd.Zoom = zoom;
+    this.osmd.render();
+    // Overlay buttons supply precise musical labels; engraving paths are decorative for AX.
+    for (const svg of this.container.querySelectorAll('svg')) { svg.setAttribute('aria-hidden', 'true'); svg.setAttribute('focusable', 'false'); }
+    this.graphical.clear();
+    const bounds = this.container.getBoundingClientRect();
+    const targets: HitTarget[] = [];
+    for (const [note, id] of mapped) {
+      const graphical = this.osmd.EngravingRules.GNote(note) as VexFlowGraphicalNote | undefined;
+      if (!graphical || !note.PrintObject) continue;
+      const heads = graphical.getNoteheadSVGs();
+      const head = heads[graphical.vfnoteIndex] ?? heads[0];
+      const element = head ?? graphical.getSVGGElement();
+      if (!element) continue;
+      const box = element.getBoundingClientRect(); if (!box.width || !box.height) continue;
+      const width = Math.max(16, box.width + 6), height = Math.max(14, box.height + 4);
+      targets.push({ id, left: box.left - bounds.left + box.width / 2 - width / 2, top: box.top - bounds.top + box.height / 2 - height / 2, width, height, partId: notes.get(id)!.partId });
+      this.graphical.set(id, { note: graphical, head });
+    }
+    return { targets, sourceCount: elements.length, mappedCount: new Set(mapped.values()).size };
+  }
+  select(ids: Set<string>) {
+    for (const [id, graphical] of this.graphical) {
+      const head = graphical.head;
+      if (!head) continue;
+      for (const element of [head, ...head.querySelectorAll('path')]) element.setAttribute('fill', ids.has(id) ? '#077a70' : this.originalColors.get(id)!);
+    }
+  }
+  clear() { this.osmd.clear(); this.graphical.clear(); }
+}

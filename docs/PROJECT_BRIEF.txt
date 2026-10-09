@@ -1,0 +1,1000 @@
+PROJECT: Lossless Graphical MusicXML Editor
+PLATFORM: macOS (Apple Silicon)
+PROJECT TYPE: Standalone desktop application
+PRIORITY: Correctness > Data Preservation > Usability > Performance > Extra Features
+
+============================================================
+1. PROJECT OBJECTIVE
+============================================================
+
+Build a standalone, professional-quality graphical MusicXML
+editor for macOS.
+
+The application should provide a convenient, MuseScore-like
+graphical editing experience while directly reading and
+modifying MusicXML files without requiring conversion into
+a proprietary intermediate project format.
+
+The central objective is to solve a fundamental problem with
+conventional music notation software:
+
+When MusicXML is imported into programs such as MuseScore,
+Dorico, or Sibelius and subsequently exported, the resulting
+MusicXML may differ substantially from the original, even
+when only a single note has been edited.
+
+These changes can affect:
+
+- Note representation
+- Rhythmic durations
+- Voices and staff assignments
+- Tuplets
+- Ties and articulations
+- Measure structure
+- Layout metadata
+- MusicXML elements not fully supported by the editor
+
+I want an application that allows precise graphical editing
+while preserving everything unrelated to the intended edits.
+
+IMPORTANT:
+
+This is NOT primarily a MusicXML-to-MusicXML converter.
+
+It is a fully graphical music notation editor that uses
+MusicXML as its working file format.
+
+I should never need to inspect or manually modify XML
+during normal operation.
+
+
+============================================================
+2. TARGET USE CASE
+============================================================
+
+My main use case is correcting MusicXML transcriptions of
+large orchestral scores, especially piano concertos.
+
+Examples include:
+
+- Rachmaninoff Piano Concerto No. 2
+- Rachmaninoff Piano Concerto No. 3
+- Chopin Piano Concerto No. 1
+- Tchaikovsky Piano Concerto No. 1
+- Rachmaninoff Rhapsody on a Theme of Paganini
+
+These scores may contain:
+
+- Hundreds or thousands of measures
+- Numerous orchestral instruments
+- Multiple staves per instrument
+- Multiple voices per staff
+- Dense orchestral chords
+- Complicated tuplets
+- Cross-staff notation
+- Frequent accidentals
+- Clef changes
+- Time signature changes
+- Unusual rhythmic groupings
+- Complex piano writing
+
+The software must ultimately be capable of working with
+complete orchestral scores rather than only small piano
+pieces.
+
+During development, prioritize testing against realistic,
+complex orchestral MusicXML.
+
+If actual concerto files are accessible in the workspace,
+use them as regression fixtures.
+
+If they are unavailable, create representative test
+fixtures and clearly identify which real-world tests
+remain outstanding.
+
+
+============================================================
+3. FUNDAMENTAL DESIGN REQUIREMENTS
+============================================================
+
+A. DIRECT MUSICXML SUPPORT
+
+The application must:
+
+- Open .musicxml files directly.
+- Support uncompressed .xml MusicXML files.
+- Save back to the original MusicXML format.
+- Avoid requiring .mscz, .sib, .dorico, or other proprietary
+  project files.
+- Preserve original information wherever possible.
+- Allow ordinary Cmd+S saving.
+- Support Save As and automatic backup creation.
+
+An internal parsed representation for editing and rendering
+is acceptable.
+
+However, that representation must NOT become the authority
+for regenerating the complete MusicXML file on every save.
+
+The original XML source must remain authoritative for
+preserving all untouched information.
+
+
+B. FULL GRAPHICAL EDITING
+
+The interface should resemble conventional music notation
+software such as MuseScore or Dorico.
+
+Requirements:
+
+- Display conventional engraved sheet music.
+- Show the complete orchestral score.
+- Allow direct selection of notes and rests.
+- Allow clicking, dragging, and keyboard-based editing.
+- Show a visible selection highlight.
+- Provide convenient editing toolbars.
+- Support zooming and scrolling.
+- Allow navigation to specific measures.
+- Display instrument names and staff labels.
+- Support keyboard shortcuts.
+- Support undo and redo.
+
+The user must NOT need to interact with XML code.
+
+Do not make an XML editor the primary interface.
+
+A graphical properties panel showing musical properties
+is acceptable, but raw XML editing is not required.
+
+
+C. SOURCE-PRESERVING EDITING
+
+This is the most important architectural requirement.
+
+Do NOT implement the saving mechanism by simply serializing
+the entire score from an engraving library.
+
+Instead, develop a source-preserving MusicXML editing engine.
+
+When one note is changed, modify only the XML information
+that must change to represent that edit correctly.
+
+For example:
+
+Original:
+
+<pitch>
+  <step>F</step>
+  <alter>1</alter>
+  <octave>4</octave>
+</pitch>
+
+If the user changes F-sharp to F-natural, update the pitch
+information and any required accidental notation.
+
+Do not rewrite unrelated measures, voices, parts, or notes.
+
+Preserve:
+
+- Untouched XML elements
+- Attributes
+- Comments
+- Whitespace where possible
+- Element ordering
+- Unsupported MusicXML features
+- Part and instrument metadata
+- Existing notation information
+- Existing layout information
+
+Implement source-range-aware XML patches or another
+equivalently reliable preservation strategy.
+
+The system must distinguish between:
+
+1. Source-preserving changes that can be applied locally.
+2. Structural changes requiring coordinated XML updates.
+3. Changes that cannot yet be represented safely.
+
+For category 3, warn the user and prevent unsafe saves.
+
+Do not silently discard or rewrite unrelated data.
+
+A no-op save must produce a byte-identical file.
+
+For supported local edits, preserve unrelated source bytes.
+
+Absolute byte identity of the entire file is not expected
+after an intentional edit, and some structural operations
+will legitimately require multiple related changes.
+
+Every edit must nevertheless preserve all unrelated musical
+information.
+
+============================================================
+4. GRAPHICAL EDITING FEATURES
+============================================================
+
+Implement the following editing capabilities.
+
+
+A. NOTE SELECTION
+
+- Click individual notes.
+- Highlight the selected note.
+- Select notes in chords independently.
+- Select multiple notes.
+- Select notes across measures.
+- Navigate using keyboard shortcuts.
+
+A selected graphical note must map reliably to the
+corresponding MusicXML note element.
+
+This mapping must remain stable when the score is rerendered.
+
+
+B. PITCH EDITING
+
+Support:
+
+- Changing note pitch using keyboard arrows.
+- Dragging notes vertically on the staff.
+- Changing octave.
+- Sharp, flat, and natural accidentals.
+- Double-sharp and double-flat accidentals.
+- Enharmonic respelling.
+- Changing individual notes within chords.
+
+Important:
+
+Correctly distinguish:
+
+- Musical pitch
+- Pitch spelling
+- Key signature
+- Explicit accidentals
+- Courtesy accidentals
+- Transposing instruments
+
+Never change pitch spelling incorrectly merely because two
+notes have the same sounding MIDI pitch.
+
+
+C. DURATION EDITING
+
+Support direct graphical editing of:
+
+- Whole notes
+- Half notes
+- Quarter notes
+- Eighth notes
+- Sixteenth notes
+- Thirty-second notes
+- Sixty-fourth notes
+- Dotted notes
+- Double-dotted notes
+- Rests
+- Tied notes
+- Tuplet notes
+
+Provide familiar duration keyboard shortcuts.
+
+When changing a note's duration, maintain consistency among
+the relevant MusicXML fields, including:
+
+- <duration>
+- <type>
+- <dot>
+- <time-modification>
+- <divisions>
+- <voice>
+- <backup>
+- <forward>
+
+Handle measure timing correctly.
+
+Do not automatically shift unrelated notes or voices
+without an explicit, visible editing operation.
+
+If a duration edit would produce an invalid measure,
+provide a clear warning and offer an appropriate correction
+workflow.
+
+Do not silently rewrite rhythms to make measures balance.
+
+
+D. VOICES AND CHORDS
+
+Support:
+
+- Multiple independent voices on a staff.
+- Editing notes in individual voices.
+- Changing voice assignments when safe.
+- Chords containing multiple simultaneous pitches.
+- Distinguishing chord notes from sequential notes.
+- Rests within different voices.
+
+MusicXML timing must be interpreted correctly.
+
+Do not simply sum every <duration> in a measure because
+MusicXML may represent multiple voices through
+<backup> and <forward> operations.
+
+
+E. NOTATION ELEMENTS
+
+The eventual editor should also support:
+
+- Ties
+- Slurs
+- Staccato and accents
+- Dynamics
+- Clefs
+- Key signatures
+- Time signatures
+- Beaming
+- Tuplets
+- Cross-staff notes
+- Grace notes
+- Tremolos
+- Ornaments
+
+Not all features need to be editable in the first version.
+
+However:
+
+Unsupported features MUST be preserved during editing
+and saving.
+
+Do not delete an element because the graphical editor
+cannot yet manipulate it.
+
+
+============================================================
+5. USER INTERFACE DESIGN
+============================================================
+
+Create a polished native-style macOS desktop interface.
+
+Prioritize usability over decorative complexity.
+
+Suggested layout:
+
+TOP TOOLBAR
+
+- Open
+- Save
+- Undo
+- Redo
+- Note duration selection
+- Accidentals
+- Voice selection
+- Zoom controls
+- Measure navigation
+
+MAIN EDITING AREA
+
+- Graphically engraved musical score
+- Multiple instrument staves
+- Scrollable score
+- Visible measure numbers
+- Clickable notes and rests
+- Selection highlighting
+- Direct manipulation of notes
+
+OPTIONAL SIDE PANEL
+
+- Selected note pitch
+- Octave
+- Accidental
+- Duration
+- Voice
+- Staff
+- Measure number
+- Other musical properties
+
+BOTTOM STATUS BAR
+
+- Current file
+- Selected instrument
+- Selected measure
+- Validation status
+- Unsaved changes indicator
+
+The application should behave like a conventional notation
+editor, not a developer tool.
+
+Keyboard and mouse editing must be responsive.
+
+Use macOS conventions wherever appropriate.
+
+Support:
+
+- Cmd+O: Open
+- Cmd+S: Save
+- Cmd+Shift+S: Save As
+- Cmd+Z: Undo
+- Cmd+Shift+Z: Redo
+
+Provide sensible shortcuts for pitch and duration changes.
+
+
+============================================================
+6. TECHNOLOGY AND ARCHITECTURE
+============================================================
+
+Preferred implementation:
+
+- Tauri 2
+- TypeScript
+- Modern frontend framework if appropriate
+- Rust backend where it provides clear benefits
+- Existing music engraving/rendering library
+
+Possible rendering engines include:
+
+- OpenSheetMusicDisplay
+- Verovio
+
+Investigate their respective capabilities before choosing.
+
+Selection criteria:
+
+1. Accuracy of MusicXML rendering
+2. Support for complex orchestral notation
+3. Mapping between rendered notes and XML elements
+4. Performance with large scores
+5. Support for incremental updates
+6. Licensing compatibility
+7. Long-term maintainability
+
+Do not blindly select a library without evaluating whether
+it can handle this project's requirements.
+
+The engraving engine should be responsible for rendering.
+
+It must NOT be responsible for rewriting the original XML
+file during ordinary saves.
+
+Recommended separation:
+
+MODULE 1: MusicXML Source Manager
+- Loads XML source.
+- Preserves original file content.
+- Tracks source element positions.
+- Applies minimal XML patches.
+
+MODULE 2: MusicXML Semantic Model
+- Parses musical structure.
+- Identifies parts, measures, voices, and notes.
+- Computes timing.
+- Maintains stable relationships between source elements
+  and graphical objects.
+
+MODULE 3: Score Renderer
+- Displays engraved notation.
+- Handles scrolling and zooming.
+- Maps mouse interactions to musical objects.
+
+MODULE 4: Editing Engine
+- Applies user editing operations.
+- Checks correctness.
+- Generates source-preserving modifications.
+- Supports undo/redo.
+
+MODULE 5: Validation Engine
+- Validates MusicXML syntax and structure.
+- Validates measure timing.
+- Detects inconsistent note representations.
+- Identifies unsupported or unsafe edits.
+
+MODULE 6: File and Backup Manager
+- Handles file opening and saving.
+- Creates backups.
+- Uses atomic writes.
+- Prevents data loss.
+
+Keep modules sufficiently independent to permit future
+renderer replacement without rewriting the editing engine.
+
+
+============================================================
+7. PERFORMANCE REQUIREMENTS
+============================================================
+
+This application must ultimately support complete
+orchestral scores.
+
+Avoid designing the editor around assumptions that scores
+contain only a few hundred notes.
+
+Use performance strategies such as:
+
+- Incremental parsing where practical
+- Lazy rendering
+- Rendering only visible pages or systems
+- Caching musical layout
+- Incremental display updates
+- Background processing for expensive calculations
+- Efficient indexing of notes and measures
+- Avoiding full-score rerendering after every local edit
+
+Opening a large concerto should not make the UI unusable.
+
+After changing one note, avoid regenerating every measure
+unless absolutely necessary.
+
+Provide instrument navigation and direct measure navigation.
+
+Develop realistic performance benchmarks using large files.
+
+Performance optimization must never compromise correctness.
+
+
+============================================================
+8. AUTOMATIC MUSICXML VALIDATION
+============================================================
+
+Implement a validation system designed specifically for
+debugging automatically transcribed orchestral MusicXML.
+
+Detect:
+
+- Incomplete measures
+- Overfilled measures
+- Invalid duration values
+- Incorrect voice timing
+- Problems involving backup/forward elements
+- Inconsistent tuplet durations
+- Malformed chord timing
+- Invalid ties where detectable
+- XML syntax and structural errors
+
+For example, previous transcription files have produced
+errors similar to:
+
+Incomplete measure:
+Measure 44, staff 15
+Found: 56/64
+Expected: 3/4
+
+Incomplete measure:
+Measure 620, staff 1
+Found: 15/12
+Expected: 4/4
+
+The application should identify the relevant measure
+and visually highlight the problem.
+
+Provide a diagnostic panel showing:
+
+- Instrument
+- Staff
+- Measure number
+- Voice
+- Expected duration
+- Actual duration
+- Possible source of the inconsistency
+
+Clicking a diagnostic should navigate directly to the
+corresponding measure.
+
+Validation must understand MusicXML's temporal cursor
+semantics, chords, grace notes, multiple voices, tuplets,
+pickup measures, and exceptional measure structures.
+
+Avoid flagging valid irregular notation as erroneous merely
+because it does not fit a simplistic measure-duration sum.
+
+
+============================================================
+9. DATA SAFETY
+============================================================
+
+Data preservation is a non-negotiable requirement.
+
+Implement:
+
+A. AUTOMATIC BACKUPS
+
+Before modifying an existing MusicXML file on disk,
+create a recoverable backup.
+
+B. ATOMIC SAVES
+
+Never directly overwrite the only existing copy during
+an incomplete write.
+
+C. UNDO/REDO
+
+All supported editing operations must be reversible.
+
+D. CHANGE TRACKING
+
+Track intended changes independently of the source file.
+
+E. VALIDATION BEFORE SAVE
+
+Check whether the edited result is valid XML and whether
+the affected musical structures remain internally
+consistent.
+
+Distinguish pre-existing validation errors from new errors
+introduced by an edit.
+
+F. SAFE FAILURE
+
+If a change cannot be safely represented, do not save a
+potentially corrupted file.
+
+Do not attempt to silently repair unrelated portions of
+the original score.
+
+G. EXTERNAL FILE CHANGES
+
+Detect when another process has changed the original file
+since it was opened.
+
+Do not silently overwrite those external modifications.
+
+
+============================================================
+10. TESTING REQUIREMENTS
+============================================================
+
+Create automated tests covering both XML preservation and
+musical correctness.
+
+TEST 1: NO-OP ROUND TRIP
+
+Open MusicXML.
+Save without modifications.
+
+Expected:
+The output must be byte-for-byte identical to the input.
+
+TEST 2: SINGLE-NOTE PITCH CHANGE
+
+Change one note from F-sharp to F-natural.
+
+Expected:
+- Correct resulting pitch.
+- Correct accidental notation.
+- All unrelated musical events unchanged.
+- All unrelated source bytes preserved.
+
+TEST 3: DURATION CHANGE
+
+Change a quarter note to an eighth note.
+
+Expected:
+- Correct MusicXML duration representation.
+- Correct rhythmic interpretation.
+- No unintended changes to unrelated voices.
+- Clear warning if the operation leaves the measure
+  rhythmically inconsistent.
+
+TEST 4: MULTIPLE VOICES
+
+Modify a note in one voice.
+
+Expected:
+Other voices remain unchanged.
+
+TEST 5: CHORD EDITING
+
+Modify one pitch inside a chord.
+
+Expected:
+Other notes in the chord remain unchanged.
+
+TEST 6: COMPLEX TUPLETS
+
+Open and edit notation containing tuplets.
+
+Expected:
+Musical timing remains correct and unsupported operations
+are safely rejected rather than approximated.
+
+TEST 7: LARGE ORCHESTRAL SCORE
+
+Open a realistic multi-instrument orchestral MusicXML file.
+
+Expected:
+- Correct rendering.
+- Functional navigation.
+- Responsive editing.
+- Successful source-preserving saving.
+
+TEST 8: UNSUPPORTED ELEMENT PRESERVATION
+
+Open MusicXML containing notation features the GUI does
+not yet support editing.
+
+Expected:
+Those elements survive unrelated edits unchanged.
+
+TEST 9: UNDO AND REDO
+
+Modify notes, undo, and redo.
+
+Expected:
+Correct musical state and corresponding source changes.
+
+TEST 10: VALIDATION
+
+Load files containing incomplete and overfilled measures.
+
+Expected:
+Correct diagnostics without false assumptions about
+multiple voices or chord durations.
+
+TEST 11: INVALID INPUT
+
+Open malformed XML or a partially corrupted MusicXML file.
+
+Expected:
+Clear error reporting and no damage to the original file.
+
+TEST 12: EXTERNAL FILE MODIFICATION
+
+Modify the source file externally while it is open.
+
+Expected:
+The application detects the conflict and does not
+silently overwrite the newer file.
+
+TEST 13: MUSICAL EVENT COMPARISON
+
+Compare the original and edited files using normalized
+musical-event representations.
+
+Verify that only the intended events changed.
+
+Do not depend exclusively on raw XML text comparison.
+
+Raw XML comparison and semantic musical comparison must
+both be available in the test infrastructure.
+
+
+============================================================
+11. DEVELOPMENT PRIORITIES
+============================================================
+
+Work incrementally, but prioritize a usable application
+rather than an incomplete architectural demonstration.
+
+PHASE 1: FUNCTIONAL FOUNDATION
+
+Implement:
+
+- Working macOS desktop application.
+- Direct MusicXML opening.
+- Music notation rendering.
+- Instrument and measure navigation.
+- Note selection.
+- Stable mapping from selected note to original XML.
+- Source-preserving MusicXML file handling.
+- Safe file saving.
+- Basic undo/redo.
+
+This phase must result in an application that actually runs.
+
+
+PHASE 2: CORE NOTE EDITING
+
+Implement:
+
+- Pitch changes.
+- Accidentals.
+- Octave changes.
+- Duration changes.
+- Rest duration changes.
+- Editing individual chord pitches.
+- Graphical editing toolbar.
+- Keyboard shortcuts.
+- Automatic validation of changed measures.
+
+After Phase 2, the application should be practically useful
+for correcting common transcription mistakes.
+
+
+PHASE 3: ADVANCED RHYTHMIC EDITING
+
+Implement:
+
+- Multiple voices.
+- More advanced rest editing.
+- Dotted rhythms.
+- Tuplets.
+- Ties.
+- Insertion and deletion of notes.
+- Safe structural modifications.
+- Enhanced undo/redo.
+
+Prioritize preserving unaffected notation.
+
+
+PHASE 4: ORCHESTRAL SUPPORT AND PERFORMANCE
+
+Implement:
+
+- Performance optimizations.
+- Large-score navigation.
+- Improved rendering of dense orchestral passages.
+- Cross-staff notation support.
+- Robust handling of complex multi-voice measures.
+- Improved engraving and layout behavior.
+
+
+PHASE 5: VALIDATION AND POLISH
+
+Implement:
+
+- Advanced diagnostics.
+- Measure error highlighting.
+- Search/navigation to errors.
+- Change-history inspection.
+- Improved keyboard shortcuts.
+- macOS application packaging.
+- UI refinement.
+- Extensive regression testing.
+
+
+============================================================
+12. ENGINEERING RULES
+============================================================
+
+1. Do not build a fake graphical editor that merely displays
+   a score image.
+
+   Notes must be individually selectable and editable.
+
+2. Do not regenerate all MusicXML content during saving
+   unless the user explicitly requests a full export.
+
+3. Do not sacrifice MusicXML preservation for convenient
+   implementation.
+
+4. Do not assume all notes have simple durations.
+
+5. Do not assume every measure contains only one voice.
+
+6. Do not assume XML element order alone determines
+   musical chronology.
+
+7. Do not rely on the renderer's internal representation
+   as the authoritative XML source.
+
+8. Do not silently normalize existing MusicXML.
+
+9. Preserve unsupported MusicXML content.
+
+10. Prefer explicit errors over destructive guesses.
+
+11. Keep the architecture modular.
+
+12. Write meaningful automated tests.
+
+13. Test the application rather than merely confirming
+    that the source code compiles.
+
+14. Avoid accumulating unnecessary demonstration modules
+    in the production application.
+
+15. Maintain clear documentation explaining the
+    architecture and limitations.
+
+16. Do not modify files belonging to my separate
+    Automatic Accompaniment project.
+
+17. Make reasonable engineering decisions independently.
+    Do not repeatedly interrupt development to ask for
+    approval on ordinary implementation details.
+
+18. If a feature cannot be completed safely, preserve the
+    working implementation, document the limitation, and
+    continue with the next achievable priority.
+
+19. Never claim an editing feature is lossless unless
+    automated tests establish the claimed preservation
+    guarantees.
+
+20. Do not falsely mark a partially implemented feature as
+    complete.
+
+
+============================================================
+13. DEVELOPMENT EXECUTION INSTRUCTIONS
+============================================================
+
+Begin by inspecting the available development environment.
+
+If an existing repository for this MusicXML editor exists,
+inspect it and continue from the existing implementation.
+
+Otherwise, establish a clean standalone project.
+
+Do not create the project inside Automatic Accompaniment.
+
+First investigate the available engraving engines and
+select an appropriate architecture.
+
+Then begin implementation immediately.
+
+Do not stop after producing a development plan.
+
+I expect actual working source code and a usable graphical
+application.
+
+Use incremental milestones with working implementations.
+
+At the end of each significant milestone:
+
+- Save all source changes.
+- Run the relevant tests.
+- Update development documentation.
+- Record completed functionality.
+- Record known limitations.
+- Preserve a recoverable checkpoint.
+
+Where Git is available, use meaningful commits.
+
+Do not overwrite user data during testing.
+
+If development-session usage limits are approaching,
+prioritize saving the working implementation and a clear
+continuation summary rather than beginning a large
+unfinished operation.
+
+At the end of the available development session, provide:
+
+1. Summary of what was actually implemented.
+2. Location of the project.
+3. Build and launch instructions.
+4. List of working features.
+5. List of incomplete features.
+6. Test results.
+7. Known MusicXML preservation limitations.
+8. Recommended next development steps.
+
+Do not claim that tests passed unless they were executed.
+
+
+============================================================
+14. DEFINITION OF SUCCESS
+============================================================
+
+The initial successful product should allow me to:
+
+1. Open an existing orchestral .musicxml file.
+
+2. View the score in conventional graphical notation.
+
+3. Navigate to any instrument and measure.
+
+4. Click a note.
+
+5. Change its pitch or accidental.
+
+6. Change its duration when the operation is supported.
+
+7. Immediately see the updated notation.
+
+8. Save directly to the same MusicXML file.
+
+9. Reopen the result in MuseScore or another MusicXML
+   reader and observe the intended correction.
+
+10. Verify through automated comparison that unrelated
+    musical information was preserved.
+
+The ultimate objective is an editor in which changing
+a single note never unintentionally alters thousands
+of unrelated notes.
+
+Correctness and preservation are more important than
+implementing every notation feature immediately.
+
+Build this as a real, maintainable desktop application.
+
+BEGIN IMPLEMENTATION.

@@ -1,0 +1,34 @@
+{
+  "runDate": "2026-10-10",
+  "platform": "darwin arm64",
+  "node": "v22.18.0",
+  "note": "Single local run, core engine only. Edits reparse and validate the full source in a worker; engraving is windowed. These are measurements, not performance guarantees.",
+  "results": [
+    {
+      "name": "Synthetic 20-part, 1,000-measure orchestral score",
+      "sourceBytes": 18526183,
+      "parts": 20,
+      "measures": 1000,
+      "notes": 122250,
+      "openMilliseconds": 1830,
+      "editMilliseconds": 1761,
+      "undoMilliseconds": 2012,
+      "initialDiagnostics": 0,
+      "independentChangedEvents": 1,
+      "exactUndo": true
+    },
+    {
+      "name": "Private Rachmaninoff variation 18 workspace copy",
+      "sourceBytes": 540173,
+      "parts": 8,
+      "measures": 17,
+      "notes": 853,
+      "openMilliseconds": 26,
+      "editMilliseconds": 27,
+      "undoMilliseconds": 25,
+      "initialDiagnostics": 0,
+      "independentChangedEvents": 1,
+      "exactUndo": true
+    }
+  ]
+}
