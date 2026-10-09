@@ -51,6 +51,16 @@ test('duration workflow is explicit and keeps the measure balanced', async ({ pa
   await expect(page.getByLabel('Duration', { exact: true })).toHaveValue('eighth');
   const model = parseScore(await download(page)); expect(model.notes.get('0:0:0')?.duration.toString()).toBe('1/2'); expect(model.diagnostics).toEqual([]);
 });
+test('fractional MusicXML ticks engrave exactly while the saved source retains the original decimals', async ({ page }) => {
+  const source = readFileSync(fixture, 'utf8').replace(/<(divisions|duration)>(\d+)<\/\1>/g, (_, name, value) => `<${name}>${Number(value) / 64}</${name}>`);
+  await page.goto('/'); await page.getByTestId('file-input').setInputFiles({ name: 'fractional.musicxml', mimeType: 'application/xml', buffer: Buffer.from(source) });
+  await expect(page.locator('[data-note-id="0:0:0"]')).toBeVisible({ timeout: 30000 });
+  await expect(page.locator('.render-error')).toHaveCount(0);
+  expect(await download(page)).toBe(source);
+  await page.locator('[data-note-id="0:0:0"]').click(); await page.getByRole('button', { name: 'Natural', exact: true }).click();
+  await expect(page.getByTestId('selected-pitch')).toHaveText('F5');
+  const expected = new ScoreDocument(source); expected.setAccidental(['0:0:0'], 0); expect(await download(page)).toBe(expected.source);
+});
 test('vertical dragging edits an individual note with a preserved source identity', async ({ page }) => {
   await openExample(page); const target = page.locator('[data-note-id="0:0:0"]'), box = await target.boundingBox(); expect(box).not.toBeNull();
   const x = box!.x + box!.width / 2, y = box!.y + box!.height / 2;

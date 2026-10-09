@@ -4,6 +4,7 @@ import { ScoreDocument } from '../src/core/editor';
 import { changedEvents, normalizedEvents, parseScore } from '../src/core/model';
 import { applyPatches, decodeSource, parseXml } from '../src/core/xml';
 import { orchestralFixture } from '../scripts/fixtures';
+import { rendererTicks } from '../src/renderer/timing';
 
 const xml = (content: string, attributes = '') => `\uFEFF<?xml version="1.0" encoding="UTF-8"?>\r\n<!-- café 🎵 untouched -->\r\n<score-partwise version="4.0"><part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list><part id="P1"><measure number="44"${attributes}><attributes><divisions>12</divisions><key><fifths>1</fifths></key><time><beats>4</beats><beat-type>4</beat-type></time></attributes>${content}</measure></part></score-partwise>\r\n`;
 const note = (step = 'F', duration = 12, extra = '', voice = '1', type = 'quarter') => `<note data-other="keep &amp; preserve">${extra}<pitch>\n  <step>${step}</step>\n  <alter>1</alter>\n  <octave>4</octave>\n</pitch><duration>${duration}</duration><voice>${voice}</voice><type>${type}</type><accidental cautionary="yes">sharp</accidental><staff>1</staff><notations><other-notation type="single">untouched</other-notation></notations></note>`;
@@ -139,6 +140,11 @@ describe('Validation and orchestral regressions', () => {
     const source = balanced().replace(/<divisions>12<\/divisions>/, '<divisions>1.5</divisions>').replace(/<duration>12<\/duration>/g, '<duration>1.5</duration>');
     const doc = new ScoreDocument(source); expect(doc.model.diagnostics).toEqual([]); expect(doc.note('0:0:2').onset.toString()).toBe('2');
     doc.setAccidental(['0:0:0'], 0); expect(doc.source).toContain('<duration>1.5</duration>');
+  });
+  test('renderer-only integer scaling preserves exact fractional timing and offsets', () => {
+    expect(rendererTicks(['0.75', '0.75', '0.375', '0.25', '-0.125', '3'])).toEqual(['6', '6', '3', '2', '-1', '24']);
+    expect(rendererTicks(['34320', '34320', '17160', '102960'])).toEqual(['2', '2', '1', '6']);
+    expect(() => rendererTicks(['1', 'not-a-duration'])).toThrow(/exactly/);
   });
   test('ambiguous duplicate fields are diagnosed and edits are refused', () => {
     const source = balanced().replace('<step>F</step>', '<step>F</step><step>G</step>'); const doc = new ScoreDocument(source);

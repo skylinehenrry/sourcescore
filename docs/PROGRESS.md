@@ -10,7 +10,7 @@ Advanced rhythmic editing (note insertion/deletion, rest splitting, ties, editab
 
 ## Native qualification and next priority
 
-The final packaged macOS save completion, Save As, reopen, conflict refusal, undo/redo and unsaved-close protection passed native smoke checks after the directory-read fix. There are 28 core tests, eight Rust file tests and 18 Chrome/WebKit interaction tests passing. Complete real concerto qualification and coordinated rest/tie/beam/tuplet operations are the next priorities.
+The final packaged macOS save completion, Save As, reopen, conflict refusal, undo/redo and unsaved-close protection passed native smoke checks after the directory-read fix. There are 29 core tests, eight Rust file tests and 20 Chrome/WebKit interaction tests passing. Complete real concerto qualification and coordinated rest/tie/beam/tuplet operations are the next priorities.
 
 ## Useful commands
 

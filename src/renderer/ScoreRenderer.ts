@@ -1,6 +1,7 @@
 import { OpenSheetMusicDisplay, type Note, type VexFlowGraphicalNote } from 'opensheetmusicdisplay';
 import type { RenderSlice, ViewNote } from '../core/session';
 import { ScoreError } from '../core/xml';
+import { rendererTicks } from './timing';
 
 export interface HitTarget { id: string; left: number; top: number; width: number; height: number; partId: string }
 /** Injectable renderer-only colors carry identity through OSMD's reader, before restoring actual colors. */
@@ -27,6 +28,17 @@ export class ScoreRenderer {
     if (xml.querySelector('parsererror')) throw new ScoreError('Could not prepare the graphical view. The original source is intact.');
     const actualParts = [...xml.documentElement.children].filter(e => e.localName === 'part');
     const actualPartIds = new Set(actualParts.map(p => p.getAttribute('id')));
+    for (const part of actualParts) {
+      const fields: { value: string; set: (value: string) => void }[] = [];
+      for (const element of [...part.getElementsByTagName('*')]) {
+        if (element.namespaceURI !== xml.documentElement.namespaceURI) continue;
+        if (['divisions', 'duration', 'offset'].includes(element.localName)) fields.push({ value: element.textContent ?? '', set: value => { element.textContent = value; } });
+        if (element.localName === 'note') for (const name of ['attack', 'release']) if (element.hasAttribute(name)) fields.push({ value: element.getAttribute(name)!, set: value => element.setAttribute(name, value) });
+        if (element.localName === 'sound' && element.hasAttribute('divisions')) fields.push({ value: element.getAttribute('divisions')!, set: value => element.setAttribute('divisions', value) });
+      }
+      const normalized = rendererTicks(fields.map(f => f.value));
+      fields.forEach((field, i) => field.set(normalized[i]));
+    }
     const partList = [...xml.documentElement.children].find(e => e.localName === 'part-list');
     if (partList) {
       const partial = [...partList.children].filter(e => e.localName === 'score-part').length !== actualPartIds.size;

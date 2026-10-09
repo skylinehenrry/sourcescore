@@ -36,6 +36,8 @@ Each graphical note's chord index identifies its individual SVG notehead. Overla
 
 The current renderer supports full-score and instrument-isolated windows. Source layout metadata stays on disk even when a desktop presentation overrides page breaks or multi-measure rest compression for navigation. No OSMD MusicXML export or proprietary intermediate score format is used.
 
+OSMD reads divisions/duration values as integers. The separate presentation copy therefore scales division-based timing quantities (including offsets and note attack/release) by an exact common rational factor to fit safe integers. Musical time stays unchanged because duration and divisions share the same factor. The saved source retains its original decimal values. A renderer-range overflow is rejected explicitly. Fractional-tick rendering, no-op bytes and independent pitch saving are exercised in Chrome and WebKit.
+
 ## Native file boundary
 
 `src-tauri/src/files.rs` canonicalizes paths and binds them to revision-checked sessions. Save verifies XML, detects changed disk bytes, writes a same-directory temporary file, flushes it, creates and flushes a unique backup, checks the target revision again and renames atomically. New Save As destinations use a no-clobber persist operation. Existing targets require a captured revision grant and a backup.
