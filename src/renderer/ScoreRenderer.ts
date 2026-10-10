@@ -88,6 +88,7 @@ export class ScoreRenderer {
       if (!graphical || !note.PrintObject) continue;
       const heads = graphical.getNoteheadSVGs();
       const head = heads[graphical.vfnoteIndex] ?? heads[0];
+      if (head) head.setAttribute('data-source-note',id);
       const element = head ?? graphical.getSVGGElement();
       if (!element) continue;
       const box = element.getBoundingClientRect(); if (!box.width || !box.height) continue;
@@ -105,4 +106,14 @@ export class ScoreRenderer {
     }
   }
   clear() { this.osmd.clear(); this.graphical.clear(); }
+  useSharedPageLayout(measures:number) {
+    this.osmd.EngravingRules.RenderSingleHorizontalStaffline = false;
+    this.osmd.EngravingRules.RenderXMeasuresPerLineAkaSystem = measures;
+    this.osmd.EngravingRules.RenderMultipleRestMeasures = false;
+    this.osmd.EngravingRules.AutoGenerateMultipleRestMeasuresFromRestMeasures = false;
+    this.osmd.EngravingRules.StretchLastSystemLine = true;
+  }
+  measureAlignment() {
+    return this.osmd.GraphicSheet.MeasureList.map((staves,index)=>({index,staves:staves.filter(Boolean).map(m=>({x:m.PositionAndShape.AbsolutePosition.x,width:m.PositionAndShape.Size.width}))}));
+  }
 }

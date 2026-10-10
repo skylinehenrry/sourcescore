@@ -12,3 +12,7 @@ playwright-report/
 *.log
 *.tsbuildinfo
 releases/
+native/.build/
+native/.swiftpm/
+native/Resources/core.js
+native/Resources/engraver.js
