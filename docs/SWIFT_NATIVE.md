@@ -1,6 +1,22 @@
-# Swift native migration — 0.2
+# Swift native editor — 0.3
 
-The entry point is now a SwiftUI App with native commands, dialogs, a white minimal interface and an AppKit vector canvas. The old command launcher was removed. Option+Left/Right flips shared pages; Up/Down moves by a semitone and Shift adds octave movement. Conservative duration/rest/chord/voice workflows remain in a compact inspector.
+The entry point is a SwiftUI App with native commands, dialogs, a white minimal interface and an AppKit vector canvas. The old command launcher was removed. Command+Left/Right flips shared pages; Up/Down moves by a semitone and Shift adds octave movement. Conservative duration/rest/chord/voice workflows remain in a compact inspector.
+
+## 0.3 changes and executed validation
+
+- Complete tie chains are indexed by exact rational musical time, voice, sounding pitch and visual tie number. A selected continuation changes all connected notes atomically, retaining original tie notation and exact undo. Missing/ambiguous/conditional endpoints remain guarded. Ordinary fret changes follow semitone movement on the existing string; a below-open-string move, harmonic or bend remains guarded.
+- Automatic accidental glyphs use the active key context, staff, octave, earlier alterations and simultaneous conflicts. Pitch alteration is independent of the printed glyph. Existing courtesy markings are preserved. This follows MusicXML's distinction between [pitch alteration and printed accidental](https://www.w3.org/2021/06/musicxml40/musicxml-reference/elements/accidental/) and [sounding and notated ties](https://www.w3.org/2021/06/musicxml40/musicxml-reference/elements/tied/).
+- A native mixer supplies instrument Mute, multiple Solo, volume, pan and sound controls, following [MuseScore's channel controls](https://handbook.musescore.org/sound-and-playback/mixer). Per-part AVAudioMixerNodes apply live mix changes without altering source or restarting the transport.
+- An explicit From bar field and inspector Play this instrument action provide bar/instrument playback. The timeline follows measure boundaries even during silence, flips pages and follows wrapped systems. Stop/seek/edit/open invalidate queued transport callbacks.
+- The native OSMD 1.9.9 adapter equalizes inter-instrument gaps before final connector/bracket placement, keeps each instrument's internal staff spacing and distributes spare viewport height. It trims unused SVG canvas space. Source print/layout metadata is unchanged. Window and mixer size changes refresh the presentation.
+- 47 source tests passed, including linked pitch edits and notated continuations, exact source isolation/undo, accidental key/bar/voice context through backups and staff-specific key changes, courtesy flags, fret safety, and the previous large-score regression. TypeScript checks now include the native bridge/renderer entry points.
+- Duration previews carry the current source revision, so a later pitch correction cannot be overwritten by a stale preview. Closing/quitting waits for queued edits before deciding whether changes need saving. Closing a score stops its playback.
+- The standalone Swift checks passed: source bridge, file backups/atomic saves/conflicts, vector identity, tempo clock, bar/page boundaries, solo/mute routing, actual piano/flute audio, silent excluded channels, native connected-note responses and sustained tie playback segments. Pitch processing measured about 1–2 ms locally.
+- Native engraving checks passed for the synthetic six-part and private eight-part fixtures: aligned bars, uniform instrument gaps, full note mapping, unchanged authoritative XML. The simple page used the requested 1100-pixel height exactly; the dense excerpt remained scrollable.
+- Packaged-app checks started solo flute at bar 4 and advanced from page 1 to page 3 automatically. Both Command page shortcuts worked. Editing the middle of a three-note tie chain changed all three F-sharp5 notes to G5 and reported 30 ms, without the former alert. Native Save As saved only those pitch fields and removed the redundant accidental; all remaining bytes, including tie curves and unknown metadata, matched the original test source.
+- A fresh MuseScore converter check did not complete because the reader process remained unresponsive and produced no output. It was stopped without touching user scores; no new MuseScore interoperability result is claimed for this checkpoint. The earlier reader check below remains historical.
+
+These are local executed checks, not universal latency, schema or full concerto guarantees. Repeat/conditional ties, advanced rhythmic coordination and the limitations in README remain outstanding.
 
 ## Source and latency
 
@@ -20,7 +36,7 @@ AVAudioEngine hosts one AVAudioUnitSampler per part. The built-in macOS General 
 
 An offline audio check renders piano and flute samples and asserts non-silence and different waveforms. Detailed articulation, ornaments, expression, microtones, unpitched percussion and exceptional conventions remain approximate or unsupported.
 
-## Executed evidence
+## 0.2 validation baseline (historical)
 
 - 34 TypeScript tests passed, including local pitch isolation, exact undo/redo across rhythm rebases, semitone/octave crossing and rapid edits on 122,250 events without rebuilding the model.
 - The standalone Swift check measured 1.04 ms for a JavaScriptCore pitch edit; no-op/undo, atomic save/backup/conflict protection and native vector identity checks passed. Real piano/flute waveforms were nonzero and different. Tempo conversion is checked.

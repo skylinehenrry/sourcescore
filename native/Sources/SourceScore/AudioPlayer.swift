@@ -29,6 +29,8 @@ final class AudioRack: @unchecked Sendable {
   let queue = DispatchQueue(label: "SourceScore.audio", qos: .userInteractive)
   let engine = AVAudioEngine()
   var samplers: [String: AVAudioUnitSampler] = [:], programs: [String: Int] = [:]
+  var mixers: [String: AVAudioMixerNode] = [:]
+  private var mix: [String: InstrumentMix] = [:]
   var bank = URL(
     fileURLWithPath:
       "/System/Library/Components/CoreAudio.component/Contents/Resources/gs_instruments.dls")
@@ -38,9 +40,14 @@ final class AudioRack: @unchecked Sendable {
     if let sampler = samplers[part.id], programs[part.id] == part.program { return sampler }
     let sampler = samplers[part.id] ?? AVAudioUnitSampler()
     if samplers[part.id] == nil {
+      let mixer = AVAudioMixerNode()
       engine.attach(sampler)
-      engine.connect(sampler, to: engine.mainMixerNode, format: nil)
+      engine.attach(mixer)
+      engine.connect(sampler, to: mixer, format: nil)
+      engine.connect(mixer, to: engine.mainMixerNode, format: nil)
       samplers[part.id] = sampler
+      mixers[part.id] = mixer
+      applyMix()
     }
     try sampler.loadSoundBankInstrument(
       at: bank, program: UInt8(clamping: part.program),
@@ -51,6 +58,24 @@ final class AudioRack: @unchecked Sendable {
     return sampler
   }
   func startEngine() throws { if !engine.isRunning { try engine.start() } }
+  private func applyMix() {
+    for (id, mixer) in mixers {
+      let value = mix[id] ?? InstrumentMix()
+      mixer.outputVolume = InstrumentMix.audible(id, in: mix) ? value.volume : 0
+      mixer.pan = value.pan
+    }
+  }
+  func setMix(_ value: [String: InstrumentMix]) {
+    queue.async { [self] in
+      mix = value
+      applyMix()
+    }
+  }
+  func changeSound(_ part: Part) {
+    queue.async { [self] in
+      do { _ = try sampler(part) } catch { outputError?(error.localizedDescription) }
+    }
+  }
   func preview(_ note: Note, part: Part) {
     queue.async { [self] in
       do {
@@ -89,6 +114,7 @@ final class AudioRack: @unchecked Sendable {
         }
         var next = 0
         var active: [String: (PlaybackEvent, Double)] = [:]
+        var lastProgress = -1.0
         let started = ProcessInfo.processInfo.systemUptime
         let clock = TempoClock(tempos: playback.tempos, baseBPM: bpm)
         let initialSeconds = clock.seconds(at: startBeat)
@@ -113,8 +139,17 @@ final class AudioRack: @unchecked Sendable {
               active[event.id] = (event, event.beat + max(0.1, event.duration))
             }
           }
-          progress(beat, Set(active.keys))
-          if next == events.count && active.isEmpty {
+          if elapsed - lastProgress >= 0.05 {
+            let ids = active.values.flatMap { value -> [String] in
+              guard let segments = value.0.segments else { return [value.0.id] }
+              return segments.filter { beat >= $0.beat && beat < $0.beat + $0.duration }.map {
+                $0.id
+              }
+            }
+            progress(beat, Set(ids))
+            lastProgress = elapsed
+          }
+          if beat >= playback.totalBeats && next == events.count && active.isEmpty {
             source.cancel()
             timer = nil
             finished()
@@ -128,8 +163,12 @@ final class AudioRack: @unchecked Sendable {
     }
   }
   /// Real offline audio render used by tests; avoids reliance on an output device.
-  static func sample(program: Int) throws -> [Float] {
+  static func sample(program: Int, mix: InstrumentMix = InstrumentMix(), otherSolo: Bool = false)
+    throws -> [Float]
+  {
     let rack = AudioRack()
+    rack.mix = ["test": mix]
+    if otherSolo { rack.mix["other"] = InstrumentMix(solo: true) }
     let part = Part(id: "test", name: "Test", staves: 1, program: program, percussion: false)
     let sampler = try rack.sampler(part)
     let format = AVAudioFormat(standardFormatWithSampleRate: 44100, channels: 2)!

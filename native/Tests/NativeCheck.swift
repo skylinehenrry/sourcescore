@@ -52,6 +52,22 @@ import Foundation
       abs(clock.seconds(at: 8) - 6) < 0.001 && abs(clock.beat(at: 6) - 8) < 0.001,
       "Source tempo changes")
     print("PASS Source tempo changes and clock conversion")
+    let timeline = PlaybackTimeline(starts: [0, 3, 6, 10, 14, 17])
+    try check(
+      timeline.measure(at: 9.99) == 2 && timeline.measure(at: 10) == 3
+        && timeline.page(at: 14, barsPerPage: 4) == 1, "Playback bar/page boundaries")
+    try check(
+      try PlaybackTimeline.resolve("5", labels: ["1", "2", "3", "4", "5"]) == 4, "Bar seek")
+    var mix = ["flute": InstrumentMix(solo: true), "piano": InstrumentMix()]
+    try check(
+      InstrumentMix.audible("flute", in: mix) && !InstrumentMix.audible("piano", in: mix),
+      "Solo routing")
+    mix["piano"]?.solo = true
+    mix["flute"]?.mute = true
+    try check(
+      !InstrumentMix.audible("flute", in: mix) && InstrumentMix.audible("piano", in: mix),
+      "Multi-solo and mute")
+    print("PASS Arbitrary bar seek, playback page boundaries, mute and multi-solo routing")
     let piano = try AudioRack.sample(program: 0)
     let flute = try AudioRack.sample(program: 73)
     try check(
@@ -61,5 +77,41 @@ import Foundation
       zip(piano, flute).reduce(0) { $0 + abs($1.0 - $1.1) } > 0.1,
       "Different instruments have identical audio")
     print("PASS Actual piano/flute audio: nonzero, different rendered waveforms")
+    let muted = try AudioRack.sample(program: 73, mix: InstrumentMix(mute: true))
+    let excluded = try AudioRack.sample(program: 0, otherSolo: true)
+    try check(
+      muted.reduce(0) { $0 + abs($1) } < 0.0001 && excluded.reduce(0) { $0 + abs($1) } < 0.0001,
+      "Muted/non-solo channels still sound")
+    print("PASS Real mixer renders muted and excluded instruments as silence")
+    let tied =
+      "<score-partwise><part-list><score-part id='P1'><part-name>Violin</part-name></score-part></part-list><part id='P1'><measure number='1'><attributes><divisions>1</divisions><key><fifths>1</fifths></key><time><beats>4</beats><beat-type>4</beat-type></time></attributes><note><pitch><step>F</step><alter>1</alter><octave>4</octave></pitch><duration>4</duration><tie type='start'/><type>whole</type><notations><tied type='start'/></notations></note></measure><measure number='2'><note><pitch><step>F</step><alter>1</alter><octave>4</octave></pitch><duration>4</duration><tie type='stop'/><type>whole</type><notations><tied type='stop'/></notations></note></measure></part></score-partwise>"
+    _ = try await engine.call("open", ["source": tied])
+    let connected = try await engine.decode(
+      EditState.self, "semitone", ["ids": ["0:1:0"], "delta": 1])
+    try check(
+      connected.notes.count == 2 && connected.notes.allSatisfy { $0.pitch?.label == "G4" },
+      "Bridge lost connected pitch updates")
+    _ = try await engine.call("validate-save")
+    let arrangement = try await engine.decode(Playback.self, "playback")
+    try check(
+      arrangement.events.count == 1 && arrangement.events[0].duration == 8
+        && arrangement.events[0].segments?.count == 2, "Tied playback timing/highlights")
+    _ = try await engine.call("undo")
+    let restored = try await engine.decode(String.self, "source")
+    try check(restored == tied, "Native connected-note undo")
+    print(
+      "PASS Native tie-chain updates, save validation, sustained playback segments and exact undo")
+    var invalidBlocked = false
+    do {
+      _ = try await engine.call(
+        "open",
+        [
+          "source": tied.replacingOccurrences(
+            of: "</divisions>", with: "</divisions><staves>Infinity</staves>")
+        ])
+    } catch { invalidBlocked = true }
+    let retained = try await engine.decode(String.self, "source")
+    try check(invalidBlocked && retained == tied, "Failed open replaced the active source")
+    print("PASS Failed native open retains the previous score source")
   }
 }

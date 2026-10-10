@@ -1,5 +1,6 @@
 import {FastDocument,midiPitch} from '../src/core/fast-document';
 import {child,children,field} from '../src/core/xml';
+import {measureLengths} from '../src/core/pitch-links';
 let doc:FastDocument;
 const viewNote=(n:any)=>({id:n.id,partId:n.partId,index:n.index,measureIndex:n.measureIndex,measureNumber:n.measureNumber,staff:n.staff,voice:n.voice,pitch:n.pitch??null,rest:n.rest,unpitched:n.unpitched,grace:n.grace,chord:n.chord,type:n.type,dots:n.dots,onset:Number(n.onset),duration:Number(n.duration),transpose:n.transpose,ties:n.ties,ratio:n.ratio??null});
 function instrumentProgram(name:string) {
@@ -7,19 +8,21 @@ function instrumentProgram(name:string) {
   for(const [words,program] of [[['piccolo'],72],[['flute','flauto'],73],[['oboe'],68],[['clarinet','clarinetto'],71],[['bassoon','fagott'],70],[['horn','corno'],60],[['trumpet','tromba'],56],[['trombone'],57],[['tuba'],58],[['timpani','timpano'],47],[['campan','glock'],9],[['piano','pianoforte'],0],[['violin','violino'],40],[['viola'],41],[['cello','violoncello'],42],[['bass','contrabass'],43],[['harp','arpa'],46]] as [string[],number][]) if(words.some(w=>n.includes(w)))return program;
   return 48;
 }
-function parts() {
-  const source=doc.model.source,list=child(doc.model.root,'part-list');
-  return doc.model.parts.map(p=>{
+function parts(document=doc) {
+  const source=document.model.source,list=child(document.model.root,'part-list');
+  return document.model.parts.map(p=>{
+    if(!Number.isSafeInteger(p.staves)||p.staves<1)throw new Error('This score contains an invalid staff count. The previous score is still open.');
     const meta=list?children(list,'score-part').find(n=>n.attributes.id===p.id):undefined;
     const midi=meta?child(meta,'midi-instrument'):undefined;
-    return {id:p.id,name:p.name,staves:p.staves,program:midi?Number(field(source,midi,'midi-program',String(instrumentProgram(p.name)+1)))-1:instrumentProgram(p.name),percussion:midi?field(source,midi,'midi-channel')==='10':false};
+    const requested=midi?Number(field(source,midi,'midi-program'))-1:NaN;
+    return {id:p.id,name:p.name,staves:p.staves,program:Number.isInteger(requested)&&requested>=0&&requested<128?requested:instrumentProgram(p.name),percussion:midi?field(source,midi,'midi-channel')==='10':false};
   });
 }
-function state(ids:string[]=[]) {
-  return {dirty:doc.dirty,canUndo:doc.canUndo,canRedo:doc.canRedo,revision:doc.revision,label:doc.lastLabel,notes:ids.map(id=>viewNote(doc.note(id)))};
+function state(ids:string[]=[],document=doc) {
+  return {dirty:document.dirty,canUndo:document.canUndo,canRedo:document.canRedo,revision:document.revision,label:document.lastLabel,notes:[...new Set([...ids,...document.lastChangedIds])].map(id=>viewNote(document.note(id)))};
 }
 function playback() {
-  const model=doc.model,lengths=Array.from({length:model.measures},(_,i)=>Math.max(...model.parts.map(p=>{const m=p.measures[i];return m?m.irregular?Number(m.extent):Math.max(Number(m.extent),...Array.from(m.expected.values()).map(r=>r?Number(r):0)):0;})));
+  const model=doc.model,lengths=measureLengths(model);
   const starts:number[]=[];let total=0;for(const length of lengths){starts.push(total);total+=length;}
   const tempos:{beat:number;bpm:number}[]=[];
   const events:any[]=[];const open=new Map<string,any>();
@@ -31,9 +34,9 @@ function playback() {
       const n=doc.note(base.id);if(!n.pitch||n.rest)continue;
       const pitch=midiPitch(n.pitch)+n.transpose;if(pitch<0||pitch>127)continue;
       const beat=starts[m.index]+Number(n.onset),dynamic=dynamicChanges.filter(d=>d.partId===n.partId&&(d.staff===0||d.staff===n.staff)&&d.beat<=beat).at(-1);
-      const event={id:n.id,partId:n.partId,measureIndex:n.measureIndex,voice:n.voice,midi:pitch,beat,duration:n.grace?0.15:Number(n.duration),velocity:Math.min(127,Math.max(1,dynamic?.velocity??88)),grace:n.grace};
+      const event={id:n.id,partId:n.partId,measureIndex:n.measureIndex,voice:n.voice,midi:pitch,beat,duration:n.grace?0.15:Number(n.duration),velocity:Math.min(127,Math.max(1,dynamic?.velocity??88)),grace:n.grace,segments:[{id:n.id,beat,duration:n.grace?0.15:Number(n.duration)}]};
       const key=`${n.partId}:${n.voice}:${pitch}`;
-      if(n.ties.includes('stop')&&open.has(key)){const previous=open.get(key);previous.duration=event.beat+event.duration-previous.beat;if(!n.ties.includes('start'))open.delete(key);continue;}
+      if(n.ties.includes('stop')&&open.has(key)){const previous=open.get(key);previous.duration=event.beat+event.duration-previous.beat;previous.segments.push(...event.segments);if(!n.ties.includes('start'))open.delete(key);continue;}
       events.push(event);if(n.ties.includes('start'))open.set(key,event);
     }
   }
@@ -43,8 +46,8 @@ function playback() {
   try {
     let value:any;
     switch(method){
-      case 'open':doc=new FastDocument(args.source);value={title:doc.model.title,measureCount:doc.model.measures,eventCount:doc.model.notes.size,parts:parts(),initialTempo:(()=>{for(const p of doc.model.parts)for(const m of p.measures)for(const d of children(m.node,'direction')){const bpm=Number(child(d,'sound')?.attributes.tempo);if(bpm>0)return bpm;}return 100;})(),diagnostics:doc.model.diagnostics,measureLabels:doc.model.parts[0].measures.map(m=>m.number),...state()};break;
-      case 'page':value={...doc.renderSlice(args.start,args.count,args.partId),notes:doc.notes(args.start,args.count,args.partId).map(viewNote),revision:doc.revision};break;
+      case 'open':{const candidate=new FastDocument(args.source);value={title:candidate.model.title,measureCount:candidate.model.measures,eventCount:candidate.model.notes.size,parts:parts(candidate),initialTempo:(()=>{for(const p of candidate.model.parts)for(const m of p.measures)for(const d of children(m.node,'direction')){const bpm=Number(child(d,'sound')?.attributes.tempo);if(Number.isFinite(bpm)&&bpm>0)return bpm;}return 100;})(),diagnostics:candidate.model.diagnostics,measureLabels:candidate.model.parts[0].measures.map(m=>m.number),...state([],candidate)};doc=candidate;break;}
+      case 'page':value={...doc.renderSlice(args.start,args.count,args.partId),start:args.start,notes:doc.notes(args.start,args.count,args.partId).map(viewNote),revision:doc.revision};break;
       case 'note':value=viewNote(doc.note(args.id));break;
       case 'adjacent':{const current=args.id?doc.note(args.id):undefined;const list=doc.notes(0,doc.model.measures,current?.partId).filter(n=>!current||(n.staff===current.staff&&n.voice===current.voice));const index=current?list.findIndex(n=>n.id===current.id)+args.delta:0;value=viewNote(list[Math.max(0,Math.min(list.length-1,index))]);break;}
       case 'semitone':doc.semitone(args.ids,args.delta);value=state(args.ids);break;

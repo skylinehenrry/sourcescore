@@ -32,9 +32,20 @@ import UniformTypeIdentifiers
   @Published var measureInput = ""
   @Published var lastEditMilliseconds: Double = 0
   @Published var programOverrides: [String: Int] = [:]
+  @Published var mixerVisible = false
+  @Published var mix: [String: InstrumentMix] = [:]
+  @Published var playbackBar = "1"
+  @Published var playbackMeasure: Int?
+  @Published var followPlayback = true
+  @Published var preparingPlayback = false
+  private var playbackGeneration = 0
+  private var chosenPlaybackMeasure: Int?
+  private var viewportHeight: Double = 900
   private var revision = 0, generation = 0, renderTask: Task<Void, Never>?,
     editTail: Task<Void, Never>?, checkTimer: Timer?
   private var renderBusy = false, needsRender = false
+  private var pendingEdits = 0
+  var hasChangesToProtect: Bool { dirty || pendingEdits > 0 }
   let barsPerPage = 4
   var primary: Note? { selection.sorted().last.flatMap { notes[$0] } }
   var pageCount: Int { max(1, ((summary?.measureCount ?? 0) + barsPerPage - 1) / barsPerPage) }
@@ -75,8 +86,7 @@ import UniformTypeIdentifiers
     guard !loading, await allowReplace() else { return }
     loading = true
     status = "Reading score…"
-    audio.stop()
-    playing = false
+    stop()
     do {
       let (source, reference) = try await files.open(url)
       try await load(source, reference: reference)
@@ -98,6 +108,7 @@ import UniformTypeIdentifiers
     let result = try await core.decode(Summary.self, "open", ["source": source])
     generation += 1
     summary = result
+    stop()
     file = reference
     dirty = false
     canUndo = false
@@ -110,6 +121,10 @@ import UniformTypeIdentifiers
     scene = nil
     partId = nil
     programOverrides = [:]
+    mix = Dictionary(uniqueKeysWithValues: result.parts.map { ($0.id, InstrumentMix()) })
+    audio.setMix(mix)
+    playbackBar = result.measureLabels.first ?? "1"
+    chosenPlaybackMeasure = 0
     status = "\(result.parts.count) instruments · \(result.measureCount) measures"
     updateTitle()
     scheduleRender()
@@ -129,16 +144,18 @@ import UniformTypeIdentifiers
     } else {
       selection = [id]
     }
-    if let note = notes[id], audition, let part = effectivePart(note.partId) {
-      audio.preview(note, part: part)
+    if let note = notes[id], !playing {
+      setPlaybackStart(note.measureIndex)
+      if audition, let part = effectivePart(note.partId) { audio.preview(note, part: part) }
     }
   }
   func edit(_ method: String, _ args: [String: Any]) {
     guard summary != nil, !loading else { return }
-    audio.stop()
-    playing = false
+    stop()
     let previous = editTail
+    pendingEdits += 1
     editTail = Task {
+      defer { pendingEdits -= 1 }
       await previous?.value
       let started = ProcessInfo.processInfo.systemUptime
       do {
@@ -184,6 +201,7 @@ import UniformTypeIdentifiers
           Note.self, "adjacent", ["id": primary?.id as Any? ?? NSNull(), "delta": delta])
         notes[note.id] = note
         selection = [note.id]
+        if !playing { setPlaybackStart(note.measureIndex) }
         let next = note.measureIndex / barsPerPage
         if page != next {
           page = next
@@ -197,6 +215,7 @@ import UniformTypeIdentifiers
     guard next != page else { return }
     page = next
     selection = []
+    if !playing { setPlaybackStart(next * barsPerPage) }
     scheduleRender()
   }
   func go() {
@@ -208,6 +227,7 @@ import UniformTypeIdentifiers
       return
     }
     page = index / barsPerPage
+    setPlaybackStart(index)
     selection = []
     measureInput = ""
     scheduleRender()
@@ -225,6 +245,12 @@ import UniformTypeIdentifiers
       await renderPage()
     }
   }
+  func setViewportHeight(_ height: Double) {
+    let next = max(200, height / zoom)
+    guard abs(next - viewportHeight) > 15 else { return }
+    viewportHeight = next
+    scheduleRender()
+  }
   private func renderPage() async {
     if renderBusy {
       needsRender = true
@@ -239,7 +265,7 @@ import UniformTypeIdentifiers
       var args: [String: Any] = ["start": page * barsPerPage, "count": barsPerPage]
       if let partId { args["partId"] = partId }
       let payload = try await core.call("page", args)
-      let (scene, pageNotes) = try await engraver.render(payload)
+      let (scene, pageNotes) = try await engraver.render(payload, height: viewportHeight)
       if generation == token && page == currentPage && revision == wanted {
         self.scene = scene
         for note in pageNotes { notes[note.id] = note }
@@ -297,36 +323,115 @@ import UniformTypeIdentifiers
     return p
   }
   func togglePlayback() {
-    if playing {
-      audio.stop()
-      playing = false
-      activeNotes = []
+    if playing || preparingPlayback {
+      stop()
       return
     }
+    playFromBar()
+  }
+  func setPlaybackStart(_ index: Int) {
+    guard let labels = summary?.measureLabels, labels.indices.contains(index) else { return }
+    chosenPlaybackMeasure = index
+    playbackBar = labels[index]
+  }
+  func setPlaybackBar(_ text: String) {
+    playbackBar = text
+    chosenPlaybackMeasure = nil
+  }
+  func setMix(_ id: String, _ value: InstrumentMix) {
+    mix[id] = value
+    audio.setMix(mix)
+  }
+  func setProgram(_ id: String, _ program: Int) {
+    programOverrides[id] = program
+    if let part = effectivePart(id) { audio.changeSound(part) }
+  }
+  func soloOnly(_ id: String) {
+    for key in mix.keys {
+      mix[key]?.solo = key == id
+      if key == id { mix[key]?.mute = false }
+    }
+    audio.setMix(mix)
+  }
+  func resetMix() {
+    mix = Dictionary(uniqueKeysWithValues: (summary?.parts ?? []).map { ($0.id, InstrumentMix()) })
+    audio.setMix(mix)
+  }
+  func playFromBar() {
+    guard let summary, !loading else { return }
+    guard bpm.isFinite, bpm > 0, bpm <= 1000 else {
+      error = "Choose a playback tempo between 1 and 1000 BPM."
+      return
+    }
+    let start: Int
+    do {
+      start =
+        try chosenPlaybackMeasure
+        ?? PlaybackTimeline.resolve(playbackBar, labels: summary.measureLabels)
+    } catch {
+      self.error = errorMessage(error)
+      return
+    }
+    stop()
+    let token = playbackGeneration
+    preparingPlayback = true
     Task {
       await editTail?.value
       do {
         var arrangement = try await core.decode(Playback.self, "playback")
+        guard token == playbackGeneration else { return }
         arrangement.parts = arrangement.parts.map { effectivePart($0.id) ?? $0 }
-        let start = primary?.measureIndex ?? page * barsPerPage
+        guard arrangement.measureBeats.indices.contains(start) else {
+          throw EditorError.message("That bar is not available for playback.")
+        }
+        let timeline = PlaybackTimeline(starts: arrangement.measureBeats)
+        preparingPlayback = false
         playing = true
+        playbackMeasure = start
+        if followPlayback && page != start / barsPerPage {
+          page = start / barsPerPage
+          scheduleRender()
+        }
+        audio.setMix(mix)
         audio.play(
           arrangement,
-          startBeat: arrangement.measureBeats[min(start, arrangement.measureBeats.count - 1)],
+          startBeat: arrangement.measureBeats[start],
           bpm: bpm,
-          progress: { [weak self] _, ids in DispatchQueue.main.async { self?.activeNotes = ids } },
+          progress: { [weak self] beat, ids in
+            DispatchQueue.main.async {
+              guard let self, token == self.playbackGeneration, self.playing else { return }
+              if self.activeNotes != ids { self.activeNotes = ids }
+              let index = timeline.measure(at: beat)
+              if self.playbackMeasure != index { self.playbackMeasure = index }
+              if self.followPlayback && self.page != index / self.barsPerPage {
+                self.page = index / self.barsPerPage
+                self.selection = []
+                self.scheduleRender()
+              }
+            }
+          },
           finished: { [weak self] in
             DispatchQueue.main.async {
-              self?.playing = false
-              self?.activeNotes = []
+              guard let self, token == self.playbackGeneration else { return }
+              self.playing = false
+              self.activeNotes = []
+              self.playbackMeasure = nil
             }
           })
-      } catch { self.error = errorMessage(error) }
+      } catch {
+        if token == playbackGeneration {
+          preparingPlayback = false
+          self.error = errorMessage(error)
+        }
+      }
     }
   }
   func stop() {
+    playbackGeneration += 1
     audio.stop()
     playing = false
+    preparingPlayback = false
+    playbackMeasure = nil
     activeNotes = []
   }
   func soundBank() {
@@ -335,7 +440,7 @@ import UniformTypeIdentifiers
       UTType(filenameExtension: "sf2") ?? .data, UTType(filenameExtension: "dls") ?? .data,
     ]
     if panel.runModal() == .OK, let url = panel.url {
-      audio.stop()
+      stop()
       audio.queue.async { [audio] in
         audio.bank = url
         audio.programs.removeAll()

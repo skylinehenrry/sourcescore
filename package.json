@@ -1,6 +1,6 @@
 {
   "name": "sourcescore",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -15,13 +15,14 @@
     "desktop:test": "node scripts/native-test.mjs",
     "tauri": "tauri",
     "legacy:desktop:build": "node scripts/desktop.mjs build --bundles app",
-    "legacy:desktop:test": "node scripts/desktop.mjs test"
+    "legacy:desktop:test": "node scripts/desktop.mjs test",
+    "desktop:render:test": "node scripts/native-render-test.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.0.0",
     "@tauri-apps/plugin-dialog": "^2.0.0",
     "lucide-react": "^0.468.0",
-    "opensheetmusicdisplay": "^1.9.0",
+    "opensheetmusicdisplay": "1.9.9",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "saxes": "^6.0.0"

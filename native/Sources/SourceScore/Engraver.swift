@@ -24,15 +24,18 @@ import WebKit
     waiters = []
     pending.forEach { $0.resume() }
   }
-  func render(_ payload: Data) async throws -> (VectorScene, [Note]) {
+  func render(_ payload: Data, height: Double) async throws -> (VectorScene, [Note]) {
     if !ready { await withCheckedContinuation { waiters.append($0) } }
-    let object = try JSONSerialization.jsonObject(with: payload)
+    var object = try JSONSerialization.jsonObject(with: payload) as! [String: Any]
+    object["height"] = height
     let result =
       try await webView.callAsyncJavaScript(
         "return await window.renderNativeScore(payload);", arguments: ["payload": object], in: nil,
         contentWorld: .page) as! [String: Any]
     let scene = try VectorScene.parse(result["svg"] as! String)
     scene.revision = result["revision"] as? Int ?? 0
+    scene.startMeasure = result["start"] as? Int ?? 0
+    scene.measureTops = result["measureTops"] as? [Double] ?? []
     scene.targets = try JSONDecoder().decode(
       [HitTarget].self, from: JSONSerialization.data(withJSONObject: result["targets"]!))
     let notes = try JSONDecoder().decode(

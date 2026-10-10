@@ -16,6 +16,7 @@ export interface ScoreNote {
   ratio?: { actual: number; normal: number }; keyFifths: number; transpose: number;
   ties: string[]; tiedNotation: boolean; beams: boolean; fullMeasureRest: boolean;
   linkedRhythm: boolean; fretted: boolean; nonTraditionalKey: boolean;
+  keyContext?: number;
 }
 export interface ScoreMeasure {
   id: string; partId: string; index: number; number: string; node: XmlElement;
@@ -48,8 +49,12 @@ export function parseScore(source: string): ScoreModel {
     const timeState = new Map<number, Rational | undefined>();
     const keyState = new Map<number, number>();
     const nonTraditionalKeys = new Map<number, boolean>();
+    const keyContexts = new Map<number, number>(); let keySerial = 0;
     const attributeState = new Map<string, string>();
     for (const [measureIndex, measureNode] of children(partNode, 'measure').entries()) {
+      const initialKeys = new Map(keyState), initialNonTraditional = new Map(nonTraditionalKeys), initialContexts = new Map(keyContexts);
+      const initialKeyMarkup = new Map([...attributeState].filter(([k])=>k.startsWith('key:')));
+      const keyChanges: {time: Rational; staff: number; fifths: number; nonTraditional: boolean; context: number; raw: string}[] = [];
       const measure: ScoreMeasure = { id: `${partIndex}:${measureIndex}`, partId: id, index: measureIndex, number: measureNode.attributes.number ?? String(measureIndex + 1), node: measureNode, notes: [], expected: new Map(timeState), irregular: measureNode.attributes.implicit === 'yes' || measureNode.attributes['non-controlling'] === 'yes', renderAttributes: [...attributeState.values()], extent: ZERO };
       part.measures.push(measure);
       let cursor = ZERO, segment = 0, lastNote: ScoreNote | undefined;
@@ -78,7 +83,7 @@ export function parseScore(source: string): ScoreModel {
             }
             if (attribute.local === 'staves') part.staves = Math.max(part.staves, Number(value(source, attribute)) || 1);
             if (attribute.local === 'transpose') transpose = Number(field(source, attribute, 'chromatic', '0')) + 12 * Number(field(source, attribute, 'octave-change', '0'));
-            if (attribute.local === 'key') { keyState.set(number, Number(field(source, attribute, 'fifths', '0'))); nonTraditionalKeys.set(number, !child(attribute, 'fifths')); }
+            if (attribute.local === 'key') { keyState.set(number, Number(field(source, attribute, 'fifths', '0'))); nonTraditionalKeys.set(number, !child(attribute, 'fifths')); keyContexts.set(number, ++keySerial); keyChanges.push({time: cursor, staff: number, fifths: keyState.get(number)!, nonTraditional: nonTraditionalKeys.get(number)!, context: keySerial, raw: source.slice(attribute.start, attribute.end)}); }
             if (attribute.local === 'time') {
               if (child(attribute, 'senza-misura') || child(attribute, 'interchangeable')) timeState.set(number, undefined);
               else {
@@ -127,6 +132,7 @@ export function parseScore(source: string): ScoreModel {
             beams: children(element, 'beam').length > 0, fullMeasureRest: child(element, 'rest')?.attributes.measure === 'yes',
             linkedRhythm: descendant(element, 'tuplet') || descendant(element, 'tremolo'), fretted: descendant(element, 'fret'),
             nonTraditionalKey: nonTraditionalKeys.get(staff) ?? nonTraditionalKeys.get(0) ?? false,
+            keyContext: keyContexts.get(staff) ?? keyContexts.get(0) ?? 0,
           };
           measure.notes.push(note); score.notes.set(noteId, note); part.staves = Math.max(part.staves, staff);
           const singular = ['pitch', 'rest', 'unpitched', 'duration', 'voice', 'type', 'accidental', 'time-modification', 'staff', 'chord', 'grace'];
@@ -144,6 +150,28 @@ export function parseScore(source: string): ScoreModel {
           if (end.compare(measure.extent) > 0) measure.extent = end;
           lastNote = note;
         }
+      }
+      // Attribute changes follow score time, including voices encoded after a backup.
+      if (keyChanges.length) {
+        keyState.clear(); nonTraditionalKeys.clear(); keyContexts.clear();
+        for (const [k,v] of initialKeys) keyState.set(k,v);
+        for (const [k,v] of initialNonTraditional) nonTraditionalKeys.set(k,v);
+        for (const [k,v] of initialContexts) keyContexts.set(k,v);
+        for (const k of [...attributeState.keys()].filter(k=>k.startsWith('key:'))) attributeState.delete(k);
+        // Reconstruct inherited keys without losing their exact lexical representation.
+        for (const [k,raw] of initialKeyMarkup) attributeState.set(k,raw);
+        const ordered=keyChanges.sort((a,b)=>a.time.compare(b.time)); let next=0;
+        const applyKey=(c:typeof keyChanges[number])=>{
+          if(c.staff===0){keyState.clear();nonTraditionalKeys.clear();keyContexts.clear();for(const k of [...attributeState.keys()].filter(k=>k.startsWith('key:')))attributeState.delete(k);}
+          keyState.set(c.staff,c.fifths);nonTraditionalKeys.set(c.staff,c.nonTraditional);keyContexts.set(c.staff,c.context);attributeState.set(`key:${c.staff}`,c.raw);
+        };
+        for(const note of [...measure.notes].sort((a,b)=>a.onset.compare(b.onset)||a.index-b.index)) {
+          while(next<ordered.length&&ordered[next].time.compare(note.onset)<=0)applyKey(ordered[next++]);
+          note.keyFifths=keyState.get(note.staff)??keyState.get(0)??0;
+          note.nonTraditionalKey=nonTraditionalKeys.get(note.staff)??nonTraditionalKeys.get(0)??false;
+          note.keyContext=keyContexts.get(note.staff)??keyContexts.get(0)??0;
+        }
+        while(next<ordered.length)applyKey(ordered[next++]);
       }
       // Budget each staff by temporal extent, not the sum of simultaneous notes.
       // Partial secondary voices and cross-staff passages need no artificial rests.

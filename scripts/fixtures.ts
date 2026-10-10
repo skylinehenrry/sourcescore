@@ -1,6 +1,6 @@
 import { writeFileSync } from 'node:fs';
 
-const note = (step: string, octave: number, ticks = 48, extras = '', staff = 1, voice = '1', type = 'quarter', alter = 0) => `<note>${extras}<pitch><step>${step}</step>${alter ? `<alter>${alter}</alter>` : ''}<octave>${octave}</octave></pitch><duration>${ticks}</duration><voice>${voice}</voice><type>${type}</type>${alter ? `<accidental>${alter > 0 ? 'sharp' : 'flat'}</accidental>` : ''}<staff>${staff}</staff></note>`;
+const note = (step: string, octave: number, ticks = 48, extras = '', staff = 1, voice = '1', type = 'quarter', alter = 0) => `<note>${extras}<pitch><step>${step}</step>${alter ? `<alter>${alter}</alter>` : ''}<octave>${octave}</octave></pitch><duration>${ticks}</duration><voice>${voice}</voice><type>${type}</type>${alter && !(step === 'F' && alter === 1) ? `<accidental>${alter > 0 ? 'sharp' : 'flat'}</accidental>` : ''}<staff>${staff}</staff></note>`;
 const rest = (ticks = 48, type = 'quarter', staff = 1, voice = '1') => `<note><rest/><duration>${ticks}</duration><voice>${voice}</voice><type>${type}</type><staff>${staff}</staff></note>`;
 
 export function orchestralFixture(measures = 12, instruments = 6) {

@@ -3,6 +3,7 @@ import SwiftUI
 
 struct ScoreCanvas: NSViewRepresentable {
   @ObservedObject var model: EditorModel
+  func makeCoordinator() -> Coordinator { Coordinator() }
   func makeNSView(context: Context) -> NSScrollView {
     let scroll = NSScrollView()
     scroll.hasVerticalScroller = true
@@ -11,12 +12,14 @@ struct ScoreCanvas: NSViewRepresentable {
     scroll.backgroundColor = .white
     let canvas = CanvasView()
     canvas.model = model
+    context.coordinator.observe(scroll, model: model)
     scroll.documentView = canvas
     return scroll
   }
   func updateNSView(_ scroll: NSScrollView, context: Context) {
     let canvas = scroll.documentView as! CanvasView
     canvas.model = model
+    model.setViewportHeight(scroll.contentSize.height)
     let oldPage = canvas.page
     canvas.page = model.page
     canvas.frame.size = CGSize(
@@ -24,12 +27,45 @@ struct ScoreCanvas: NSViewRepresentable {
       height: max(scroll.contentSize.height, (model.scene?.height ?? 1000) * model.zoom))
     canvas.needsDisplay = true
     canvas.updateAccessibility()
-    if oldPage != model.page { canvas.scroll(.zero) }
+    if oldPage != model.page {
+      canvas.scroll(.zero)
+      canvas.followedMeasure = nil
+    }
+    if model.followPlayback, let measure = model.playbackMeasure, let scene = model.scene,
+      canvas.followedMeasure != measure || canvas.followedScene != ObjectIdentifier(scene),
+      scene.measureTops.indices.contains(measure - scene.startMeasure)
+    {
+      canvas.followedMeasure = measure
+      canvas.followedScene = ObjectIdentifier(scene)
+      let y = max(0, scene.measureTops[measure - scene.startMeasure] * model.zoom - 16)
+      canvas.scroll(
+        NSPoint(x: 0, y: min(y, max(0, canvas.frame.height - scroll.contentSize.height))))
+    }
+    if !model.playing || !model.followPlayback {
+      canvas.followedMeasure = nil
+      canvas.followedScene = nil
+    }
+  }
+  final class Coordinator {
+    private var observer: NSObjectProtocol?
+    func observe(_ scroll: NSScrollView, model: EditorModel) {
+      scroll.contentView.postsBoundsChangedNotifications = true
+      observer = NotificationCenter.default.addObserver(
+        forName: NSView.boundsDidChangeNotification, object: scroll.contentView, queue: .main
+      ) { [weak scroll, weak model] _ in
+        Task { @MainActor in
+          if let scroll { model?.setViewportHeight(scroll.contentSize.height) }
+        }
+      }
+    }
+    deinit { if let observer { NotificationCenter.default.removeObserver(observer) } }
   }
 }
 final class CanvasView: NSView {
   weak var model: EditorModel?
   var page = -1
+  var followedMeasure: Int?
+  var followedScene: ObjectIdentifier?
   private var drag: (id: String, y: CGFloat)?
   override var isFlipped: Bool { true }
   override var acceptsFirstResponder: Bool { true }
@@ -155,7 +191,7 @@ final class CanvasView: NSView {
   }
   override func keyDown(with event: NSEvent) {
     guard let model else { return }
-    if event.modifierFlags.contains(.option) && [123, 124].contains(event.keyCode) {
+    if event.modifierFlags.contains(.command) && [123, 124].contains(event.keyCode) {
       model.flip(event.keyCode == 124 ? 1 : -1)
       return
     }

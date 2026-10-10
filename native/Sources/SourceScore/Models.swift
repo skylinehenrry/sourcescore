@@ -99,6 +99,12 @@ struct PlaybackEvent: Codable {
   var duration: Double
   var velocity: Int
   var grace: Bool
+  var segments: [PlaybackSegment]?
+}
+struct PlaybackSegment: Codable {
+  var id: String
+  var beat: Double
+  var duration: Double
 }
 struct Tempo: Codable {
   var beat: Double

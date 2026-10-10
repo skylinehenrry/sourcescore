@@ -1,6 +1,8 @@
 import { ScoreDocument, pitchText, type EditPlan } from './editor';
 import { parseScore, changedEvents, keyAlteration, type Pitch, type ScoreNote, type Step } from './model';
-import { applyPatches, child, children, encodeXml, field, parseXml, qualified, setField, ScoreError } from './xml';
+import { applyPatches, child, children, encodeXml, field, parseXml, qualified, setField, scalarPatch, ScoreError, type Patch } from './xml';
+import { PitchLinks, tieTypes, tiedElements, nextFret } from './pitch-links';
+import { automaticAccidental } from './accidentals';
 
 const order = ['grace','cue','chord','pitch','unpitched','rest','duration','tie','instrument','footnote','level','voice','type','dot','accidental','time-modification','stem','notehead','notehead-text','staff','beam','notations','lyric','play','listen'];
 const accidentals: Record<number,string> = { '-2':'flat-flat','-1':'flat','0':'natural','1':'sharp','2':'double-sharp' };
@@ -37,6 +39,8 @@ export class FastDocument {
   private dirtyState=false;
   revision=0;
   lastLabel='';
+  lastChangedIds:string[]=[];
+  private links?:PitchLinks;
   constructor(source:string) { this.base=new ScoreDocument(source); this.saved=source; }
   get model() { return this.base.model; }
   get dirty() { return this.dirtyState; }
@@ -69,29 +73,46 @@ export class FastDocument {
     return `<source-root ${[...namespaces].map(([key,v])=>`${key}="${encodeXml(v)}"`).join(' ')}>`;
   }
   editPitches(updates:Map<string,Pitch>) {
-    const before=new Map<string,LocalState>(),after=new Map<string,LocalState>();
+    this.lastChangedIds=[];
+    const coordinated=new Map<string,Pitch>();
     for(const [id,pitch] of updates) {
+      const note=this.note(id);
+      if(note.tiedNotation&&(!tiedElements(note).length||tiedElements(note).some(e=>!['start','stop','continue','let-ring'].includes(e.attributes.type))))throw new ScoreError('This note has unrecognized tie notation. Its original pitch and notation were preserved.');
+      const chain=tieTypes(note).size ? (this.links??=new PitchLinks(this.model)).chain(note) : [id];
+      for(const linked of chain) {
+        const other=coordinated.get(linked);
+        if(other&&midiPitch(other)!==midiPitch(pitch)) throw new ScoreError('The selected tie notes request conflicting pitches. Select one note in the chain; no notes were changed.');
+        if(!other)coordinated.set(linked,pitch);
+      }
+    }
+    const before=new Map<string,LocalState>(),after=new Map<string,LocalState>();
+    for(const [id,pitch] of coordinated) {
       const note=this.note(id), current=this.local(id);
-      if(note.ties.length||note.tiedNotation||note.fretted) throw new ScoreError('This pitch has linked tie or fret notation and cannot be changed independently yet.');
       if(!Number.isInteger(note.pitch!.alter)||!accidentals[note.pitch!.alter]) throw new ScoreError('Microtonal pitch editing is not supported.');
-      if(this.model.diagnostics.some(d=>d.code==='NOTE_CARDINALITY'&&d.noteId===id)) throw new ScoreError('Duplicate note fields make this event ambiguous.');
+      if(this.model.diagnostics.some(d=>['NOTE_CARDINALITY','NOTE_KIND','PITCH'].includes(d.code)&&d.noteId===id)) throw new ScoreError('Invalid or duplicate note fields make this event ambiguous.');
       if(!steps.includes(pitch.step)||!Number.isInteger(pitch.octave)||pitch.octave<0||pitch.octave>9||!accidentals[pitch.alter]) throw new ScoreError('Choose an exactly representable written pitch.');
       if(JSON.stringify(current.pitch)===JSON.stringify(pitch)) continue;
       const prefix=this.wrapper(note), text=prefix+current.xml+'</source-root>', root=parseXml(text).children[0];
       const pitchNode=child(root,'pitch'); if(!pitchNode) throw new ScoreError('This event has no editable pitch.');
-      const patches=[setField(text,pitchNode,'step',pitch.step,['step','alter','octave'],'Step'),setField(text,pitchNode,'octave',String(pitch.octave),['step','alter','octave'],'Octave'),setField(text,root,'accidental',accidentals[pitch.alter],order,'Accidental')];
+      const accidental=automaticAccidental(this.model,note,pitch,n=>coordinated.get(n.id)??this.note(n.id).pitch);
+      const patches:Patch[]=[setField(text,pitchNode,'step',pitch.step,['step','alter','octave'],'Step'),setField(text,pitchNode,'octave',String(pitch.octave),['step','alter','octave'],'Octave')];
+      const printed=child(root,'accidental');
+      if(accidental)patches.push(setField(text,root,'accidental',accidental,order,'Printed accidental'));
+      else if(printed){if(/<!--|<!\[CDATA\[/.test(text.slice(printed.start,printed.end))||printed.children.length)throw new ScoreError('The redundant accidental contains annotations and cannot be removed safely.');patches.push({start:printed.start,end:printed.end,text:'',label:'Remove redundant accidental'});}
+      for(const fret of nextFret(text,root,current.pitch,pitch)) patches.push(scalarPatch(text,fret.element,String(fret.value),'Coordinated fret'));
       if(pitch.alter!==0||child(pitchNode,'alter')) patches.push(setField(text,pitchNode,'alter',String(pitch.alter),['step','alter','octave'],'Alteration'));
       const candidate=applyPatches(text,patches); const checked=parseXml(candidate).children[0], checkedPitch=child(checked,'pitch')!;
       if(field(candidate,checkedPitch,'step')!==pitch.step||Number(field(candidate,checkedPitch,'alter','0'))!==pitch.alter||Number(field(candidate,checkedPitch,'octave'))!==pitch.octave) throw new ScoreError('The local pitch patch failed validation.');
-      before.set(id,current); after.set(id,{xml:candidate.slice(prefix.length,-'</source-root>'.length),pitch:{...pitch},accidental:accidentals[pitch.alter]});
+      before.set(id,current); after.set(id,{xml:candidate.slice(prefix.length,-'</source-root>'.length),pitch:{...pitch},accidental});
     }
     if(!after.size) return;
-    const label=after.size===1?`Pitch ${pitchText([...after.values()][0].pitch)}`:`Change ${after.size} pitches`;
+    const label=after.size===1?`Pitch ${pitchText([...after.values()][0].pitch)}`:`Change ${after.size} connected pitches`;
     this.record({kind:'pitch',label,before,after});
     this.applyStates(after); this.dirtyState=true;
   }
   private record(record:History) { this.history.splice(this.cursor); this.history.push(record); this.cursor++; this.lastLabel=record.label; }
   private applyStates(states:Map<string,LocalState>) {
+    this.lastChangedIds=[...states.keys()];
     for(const [id,state] of states) {
       const node=this.base.note(id).node;
       if(state.xml===this.model.source.slice(node.start,node.end)) this.overrides.delete(id); else this.overrides.set(id,state);
@@ -111,10 +132,10 @@ export class FastDocument {
     const index=note.pitch.octave*7+steps.indexOf(note.pitch.step)+direction,step=steps[((index%7)+7)%7],octave=Math.floor(index/7);
     this.editPitches(new Map([[id,{step,octave,alter:midiPitch(note.pitch)-((octave+1)*12+semis[step])}]]));
   }
-  private rebase(source:string) { this.base=new ScoreDocument(source); this.overrides.clear(); this.composed=source; this.revision++; }
+  private rebase(source:string) { this.base=new ScoreDocument(source); this.links=undefined; this.lastChangedIds=[]; this.overrides.clear(); this.composed=source; this.revision++; }
   private flush() { if(this.overrides.size) this.rebase(this.source); }
-  planDuration(id:string,type:string,dots:number) { this.flush(); return this.base.planDuration(id,type as any,dots); }
-  duration(plan:EditPlan) { const before=this.source; this.base.applyPlan(plan); const after=this.base.source; if(before!==after) {this.record({kind:'full',label:plan.label,before,after});this.rebase(after);this.dirtyState=true;} }
+  planDuration(id:string,type:string,dots:number) { this.flush(); return {...this.base.planDuration(id,type as any,dots),revision:this.revision}; }
+  duration(plan:EditPlan) { if(plan.revision!==this.revision)throw new ScoreError('The score changed while this operation was being previewed. Choose the duration again.');const before=this.source; this.base.applyPlan({...plan,revision:this.base.revision}); const after=this.base.source; if(before!==after) {this.record({kind:'full',label:plan.label,before,after});this.rebase(after);this.dirtyState=true;} }
   voice(id:string,voice:string) { this.flush(); const before=this.source; this.base.changeVoice(id,voice); const after=this.base.source; if(before!==after) {this.record({kind:'full',label:`Voice ${voice}`,before,after});this.rebase(after);this.dirtyState=true;} }
   undo() { if(!this.canUndo)return;const record=this.history[--this.cursor];if(record.kind==='pitch')this.applyStates(record.before);else this.rebase(record.before);this.lastLabel='Undo '+record.label;this.dirtyState=this.source!==this.saved; }
   redo() { if(!this.canRedo)return;const record=this.history[this.cursor++];if(record.kind==='pitch')this.applyStates(record.after);else this.rebase(record.after);this.lastLabel='Redo '+record.label;this.dirtyState=this.source!==this.saved; }

@@ -28,6 +28,8 @@ final class VectorScene {
   var targets: [HitTarget] = []
   var originalPitches: [String: Pitch] = [:]
   var revision = 0
+  var startMeasure = 0
+  var measureTops: [Double] = []
   static func parse(_ svg: String) throws -> VectorScene {
     let delegate = SVGReader()
     let parser = XMLParser(data: Data(svg.utf8))

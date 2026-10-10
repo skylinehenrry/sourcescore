@@ -18,6 +18,11 @@ test('local pitch history remains exact across coordinated rhythm rebases',()=>{
   doc.duration(doc.planDuration('0:0:0','eighth',0));const duration=doc.source;
   doc.undo();expect(doc.source).toBe(pitch);doc.undo();expect(doc.source).toBe(source);doc.redo();expect(doc.source).toBe(pitch);doc.redo();expect(doc.source).toBe(duration);doc.validateSave();
 });
+test('a stale duration preview cannot overwrite a later pitch correction',()=>{
+  const doc=new FastDocument(orchestralFixture()),plan=doc.planDuration('0:0:0','eighth',0);
+  doc.semitone(['0:0:0'],1);const corrected=doc.source;
+  expect(()=>doc.duration(plan)).toThrow(/changed.*previewed/);expect(doc.source).toBe(corrected);
+});
 test('local rendering keeps every original note anchor and applies only current note overrides',()=>{
   const doc=new FastDocument(orchestralFixture(12));const before=doc.renderSlice(8,4);doc.accidental(['0:8:0'],0);const after=doc.renderSlice(8,4);
   expect(after.noteIds).toEqual(before.noteIds);expect(after.xml).toContain('<accidental>natural</accidental>');expect(changedEvents(parseScore(before.xml),parseScore(after.xml))).toHaveLength(1);

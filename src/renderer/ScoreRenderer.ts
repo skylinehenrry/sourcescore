@@ -10,6 +10,7 @@ export class ScoreRenderer {
   private graphical = new Map<string, { note: VexFlowGraphicalNote; head?: HTMLElement }>();
   private originalColors = new Map<string, string>();
   private stemColors = new Map<string, string>();
+  private nativeHeight?:number;
   constructor(private container: HTMLDivElement) {
     this.osmd = new OpenSheetMusicDisplay(container, {
       backend: 'svg', autoResize: false, drawTitle: false, drawSubtitle: false,
@@ -78,6 +79,19 @@ export class ScoreRenderer {
     }
     this.osmd.Zoom = zoom;
     this.osmd.render();
+    if(this.nativeHeight) {
+      const metrics=this.instrumentSpacing();
+      const gaps=metrics.flatMap(s=>s.gaps),count=gaps.length;
+      if(count) {
+        const ink=this.container.querySelector('svg')!.getBBox();
+        const currentHeight=ink.y+ink.height+24;
+        const uniform=Math.max(0,...gaps);
+        const equalization=gaps.reduce((sum,gap)=>sum+(uniform-gap)*10,0);
+        const extra=Math.max(0,this.nativeHeight-currentHeight-equalization)/(count*10);
+        (this.osmd.EngravingRules as any).SourceScoreInstrumentGap=uniform+extra;
+        if(equalization>0.1||extra>0.01)this.osmd.render();
+      }
+    }
     // Overlay buttons supply precise musical labels; engraving paths are decorative for AX.
     for (const svg of this.container.querySelectorAll('svg')) { svg.setAttribute('aria-hidden', 'true'); svg.setAttribute('focusable', 'false'); }
     this.graphical.clear();
@@ -112,6 +126,23 @@ export class ScoreRenderer {
     this.osmd.EngravingRules.RenderMultipleRestMeasures = false;
     this.osmd.EngravingRules.AutoGenerateMultipleRestMeasuresFromRestMeasures = false;
     this.osmd.EngravingRules.StretchLastSystemLine = true;
+  }
+  setNativePageHeight(height:number) {
+    this.nativeHeight=height;
+    (this.osmd.EngravingRules as any).SourceScoreNativeSpacing=true;
+    (this.osmd.EngravingRules as any).SourceScoreInstrumentGap=0;
+  }
+  instrumentSpacing() {
+    return this.osmd.GraphicSheet.MusicPages.flatMap(page=>page.MusicSystems.map(system=>({
+      gaps:system.StaffLines.slice(1).flatMap((line,i)=>line.ParentStaff.ParentInstrument!==system.StaffLines[i].ParentStaff.ParentInstrument?[line.PositionAndShape.RelativePosition.y-system.StaffLines[i].PositionAndShape.RelativePosition.y-system.StaffLines[i].StaffHeight]:[]),
+      staves:system.StaffLines.map(line=>({top:line.PositionAndShape.AbsolutePosition.y,height:line.StaffHeight}))
+    })));
+  }
+  measureTops() {
+    return this.osmd.GraphicSheet.MeasureList.map(staves=>{
+      const system=staves.find(Boolean)?.ParentMusicSystem;
+      return system ? (system.PositionAndShape.AbsolutePosition.y+system.PositionAndShape.BorderTop)*10 : 0;
+    });
   }
   measureAlignment() {
     return this.osmd.GraphicSheet.MeasureList.map((staves,index)=>({index,staves:staves.filter(Boolean).map(m=>({x:m.PositionAndShape.AbsolutePosition.x,width:m.PositionAndShape.Size.width}))}));

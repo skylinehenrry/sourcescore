@@ -4,7 +4,7 @@ import SwiftUI
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
   weak var model: EditorModel?
   func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-    guard let model, model.dirty else { return .terminateNow }
+    guard let model, model.hasChangesToProtect else { return .terminateNow }
     Task {
       let accepted = await model.allowReplace()
       NSApp.reply(toApplicationShouldTerminate: accepted)
@@ -16,9 +16,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     sender.reply(toOpenOrPrint: .success)
   }
   func windowShouldClose(_ sender: NSWindow) -> Bool {
-    guard let model, model.dirty else { return true }
+    guard let model else { return true }
+    if !model.hasChangesToProtect {
+      model.stop()
+      return true
+    }
     Task {
       if await model.allowReplace() {
+        model.stop()
         sender.delegate = nil
         sender.close()
       }
@@ -60,15 +65,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
           .disabled(!model.canRedo)
       }
       CommandMenu("Navigate") {
-        Button("Previous Page") { model.flip(-1) }.keyboardShortcut(.leftArrow, modifiers: .option)
+        Button("Previous Page") { model.flip(-1) }.keyboardShortcut(.leftArrow, modifiers: .command)
           .disabled(model.page == 0)
-        Button("Next Page") { model.flip(1) }.keyboardShortcut(.rightArrow, modifiers: .option)
+        Button("Next Page") { model.flip(1) }.keyboardShortcut(.rightArrow, modifiers: .command)
           .disabled(model.page + 1 >= model.pageCount)
       }
       CommandMenu("Playback") {
         Button(model.playing ? "Stop" : "Play", action: model.togglePlayback).keyboardShortcut(
           .space, modifiers: [])
         Toggle("Audition Selected and Edited Notes", isOn: $model.audition)
+        Toggle("Follow Playback", isOn: $model.followPlayback)
+        Toggle("Mixer", isOn: $model.mixerVisible).keyboardShortcut(
+          KeyEquivalent(Character(UnicodeScalar(NSF10FunctionKey)!)), modifiers: [])
         Button("Choose SoundFont…", action: model.soundBank)
       }
     }
@@ -87,13 +95,13 @@ struct EditorWindow: View {
             model.flip(-1)
           } label: {
             Image(systemName: "chevron.left")
-          }.disabled(model.page == 0)
+          }.disabled(model.page == 0).help("Previous page · Command–Left")
           Text("\(model.page+1) / \(model.pageCount)").monospacedDigit().font(.caption)
           Button {
             model.flip(1)
           } label: {
             Image(systemName: "chevron.right")
-          }.disabled(model.page + 1 >= model.pageCount)
+          }.disabled(model.page + 1 >= model.pageCount).help("Next page · Command–Right")
           TextField("Measure", text: $model.measureInput).frame(width: 75).onSubmit(model.go)
           Button("Go", action: model.go)
         } else {
@@ -141,6 +149,10 @@ struct EditorWindow: View {
           inspector(note).frame(width: 210).padding(18)
         }
       }.background(.white)
+      if model.mixerVisible, let summary = model.summary {
+        Divider()
+        InstrumentMixer(model: model, parts: summary.parts)
+      }
       if model.diagnostics, let summary = model.summary {
         Divider()
         ScrollView {
@@ -173,6 +185,11 @@ struct EditorWindow: View {
         if model.loading { ProgressView().controlSize(.mini) }
         Text(model.status).lineLimit(1)
         Spacer()
+        if let index = model.playbackMeasure, let labels = model.summary?.measureLabels,
+          labels.indices.contains(index)
+        {
+          Text("Playing bar \(labels[index])").monospacedDigit()
+        }
         if model.lastEditMilliseconds > 0 {
           Text(String(format: "%.0f ms", model.lastEditMilliseconds)).foregroundStyle(.tertiary)
         }
@@ -193,12 +210,26 @@ struct EditorWindow: View {
       }
       ToolbarItemGroup(placement: .principal) {
         Button(action: model.togglePlayback) {
-          Image(systemName: model.playing ? "stop.fill" : "play.fill")
-        }.disabled(model.summary == nil).help("Play score")
+          Image(systemName: model.playing || model.preparingPlayback ? "stop.fill" : "play.fill")
+        }.disabled(model.summary == nil).help(
+          model.playing ? "Stop playback" : "Play from selected bar")
+        Text("From bar").font(.caption).foregroundStyle(.secondary)
+        TextField("Bar", text: Binding(get: { model.playbackBar }, set: model.setPlaybackBar))
+          .frame(width: 45).accessibilityLabel("Play from bar").onSubmit(model.playFromBar)
         TextField("BPM", value: $model.bpm, format: .number).frame(width: 42)
         Text("BPM").font(.caption).foregroundStyle(.secondary)
         Toggle(isOn: $model.audition) { Image(systemName: "speaker.wave.2") }.toggleStyle(.button)
           .help("Audition notes")
+        Button {
+          model.mixerVisible.toggle()
+        } label: {
+          Image(systemName: "slider.horizontal.3")
+        }
+        .help("Mixer · Mute or solo instruments").accessibilityLabel("Mixer")
+        Toggle(isOn: $model.followPlayback) {
+          Image(systemName: "rectangle.and.arrow.up.right.and.arrow.down.left")
+        }
+        .toggleStyle(.button).help("Follow playback pages").accessibilityLabel("Follow playback")
       }
       ToolbarItemGroup(placement: .automatic) {
         Button {
@@ -258,6 +289,10 @@ struct EditorWindow: View {
         .caption
       ).foregroundStyle(.secondary)
       if let pitch = note.pitch {
+        if !note.ties.isEmpty {
+          Text("Pitch edits change the connected tied notes together.").font(.caption)
+            .foregroundStyle(.secondary)
+        }
         HStack {
           Picker(
             "Step",
@@ -315,8 +350,14 @@ struct EditorWindow: View {
         Text(part.name).font(.caption).fixedSize(horizontal: false, vertical: true)
         Picker(
           "Sound",
-          selection: Binding(get: { part.program }, set: { model.programOverrides[part.id] = $0 })
+          selection: Binding(get: { part.program }, set: { model.setProgram(part.id, $0) })
         ) { ForEach(Self.sounds, id: \.0) { entry in Text(entry.1).tag(entry.0) } }.labelsHidden()
+        Button("Play this instrument") {
+          model.soloOnly(part.id)
+          model.setPlaybackStart(note.measureIndex)
+          model.mixerVisible = true
+          model.playFromBar()
+        }.buttonStyle(.plain).font(.caption)
       }
       Spacer()
     }
@@ -327,4 +368,66 @@ struct EditorWindow: View {
     (57, "Trombone"), (58, "Tuba"), (60, "Horn"), (68, "Oboe"), (70, "Bassoon"), (71, "Clarinet"),
     (72, "Piccolo"), (73, "Flute"),
   ]
+}
+
+struct InstrumentMixer: View {
+  @ObservedObject var model: EditorModel
+  var parts: [Part]
+  var body: some View {
+    VStack(spacing: 8) {
+      HStack {
+        Text("Mixer").font(.headline)
+        Spacer()
+        Button("Reset", action: model.resetMix).buttonStyle(.plain).font(.caption)
+        Button {
+          model.mixerVisible = false
+        } label: {
+          Image(systemName: "xmark")
+        }
+        .buttonStyle(.plain).help("Close mixer")
+      }.padding(.horizontal, 16).padding(.top, 10)
+      ScrollView(.horizontal) {
+        HStack(alignment: .top, spacing: 0) {
+          ForEach(parts) { part in
+            VStack(spacing: 8) {
+              Text(part.name).font(.caption).fontWeight(.medium).multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+              Picker(
+                "Sound",
+                selection: Binding(
+                  get: { model.programOverrides[part.id] ?? part.program },
+                  set: { model.setProgram(part.id, $0) })
+              ) {
+                ForEach(EditorWindow.sounds, id: \.0) { Text($0.1).tag($0.0) }
+              }.labelsHidden().controlSize(.small).accessibilityLabel("Sound for \(part.name)")
+              HStack {
+                Toggle("M", isOn: binding(part.id, \.mute)).toggleStyle(.button).help(
+                  "Mute \(part.name)"
+                ).accessibilityLabel("Mute \(part.name)")
+                Toggle("S", isOn: binding(part.id, \.solo)).toggleStyle(.button).help(
+                  "Solo \(part.name)"
+                ).accessibilityLabel("Solo \(part.name)")
+              }
+              Slider(value: binding(part.id, \.volume), in: 0...1).accessibilityLabel(
+                "Volume for \(part.name)")
+              Text("\(Int((model.mix[part.id]?.volume ?? 0.8)*100))%").font(.caption2)
+                .monospacedDigit().foregroundStyle(.secondary)
+              Slider(value: binding(part.id, \.pan), in: -1...1).accessibilityLabel(
+                "Pan for \(part.name)")
+            }.padding(.horizontal, 14).padding(.bottom, 12).frame(width: 152)
+            Divider()
+          }
+        }.padding(.horizontal, 6)
+      }
+    }.background(.white).frame(maxHeight: 220)
+  }
+  private func binding<T>(_ id: String, _ path: WritableKeyPath<InstrumentMix, T>) -> Binding<T> {
+    Binding(
+      get: { (model.mix[id] ?? InstrumentMix())[keyPath: path] },
+      set: { next in
+        var value = model.mix[id] ?? InstrumentMix()
+        value[keyPath: path] = next
+        model.setMix(id, value)
+      })
+  }
 }
