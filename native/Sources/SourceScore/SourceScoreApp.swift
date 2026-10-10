@@ -61,14 +61,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         ).disabled(model.summary == nil)
       }
       CommandGroup(replacing: .undoRedo) {
-        Button("Undo", action: model.undo).keyboardShortcut("z").disabled(!model.canUndo)
-        Button("Redo", action: model.redo).keyboardShortcut("z", modifiers: [.command, .shift])
-          .disabled(!model.canRedo)
+        Button("Undo", action: model.undoCommand).keyboardShortcut("z")
+        Button("Redo", action: model.redoCommand).keyboardShortcut("z", modifiers: [.command, .shift])
       }
       CommandGroup(replacing: .pasteboard) {
         Button("Cut") { model.copySelection(cut: true) }.keyboardShortcut("x")
         Button("Copy") { model.copySelection() }.keyboardShortcut("c")
         Button("Paste", action: model.pasteSelection).keyboardShortcut("v")
+        Button("Select All", action: model.selectAll).keyboardShortcut("a")
       }
       CommandMenu("Navigate") {
         Button("Previous Page") { model.flip(-1) }.keyboardShortcut(.leftArrow, modifiers: .command)

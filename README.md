@@ -1,6 +1,6 @@
 # SourceScore
 
-A native macOS graphical MusicXML editor that keeps the original XML authoritative. Version 0.4 uses **SwiftUI and AppKit**, a white minimal interface and a native Core Graphics score canvas. It now supports composition entry and a broader notation inspector. Launch `releases/SourceScore.app` directly; no command file, development server or account is needed.
+A native macOS graphical MusicXML editor that keeps the original XML authoritative. Version 0.4.1 uses **SwiftUI and AppKit**, a white minimal interface and a native Core Graphics score canvas. It now supports composition entry and a broader notation inspector. Launch `releases/SourceScore.app` directly; no command file, development server or account is needed.
 
 The Swift frontend is in `native/Sources/SourceScore`; the preserving MusicXML engine is in `src/core`. The app is a build of these sources. Full MuseScore/Dorico editing parity is an ongoing target, **not a completed claim**. See [the capability matrix and remaining work](docs/FULL_EDITOR.md).
 

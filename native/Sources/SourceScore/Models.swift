@@ -33,6 +33,7 @@ struct Note: Codable, Identifiable {
   var voice: String
   var pitch: Pitch?
   var rest: Bool
+  var fullMeasureRest: Bool?
   var unpitched: Bool
   var grace: Bool
   var chord: Bool

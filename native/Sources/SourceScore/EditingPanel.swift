@@ -19,7 +19,7 @@ struct NoteEntryBar: View {
       Picker("Accidental", selection: $model.inputAlter) {
         Text("Key signature").tag(nil as Int?)
         ForEach(-2...2, id: \.self) { Text(["𝄫", "♭", "♮", "♯", "𝄪"][$0 + 2]).tag(Optional($0)) }
-      }.frame(width: 130)
+      }.frame(width: 200)
       Toggle("Chord", isOn: $model.inputChord).toggleStyle(.button)
       Toggle("Grace", isOn: $model.inputGrace).toggleStyle(.button)
       Button("Rest · R") { model.enter(nil) }
@@ -99,7 +99,10 @@ struct EditingPanel: View {
       }
       Picker(
         "Duration", selection: Binding(get: { note.type }, set: { model.duration($0, note.dots) })
-      ) { ForEach(editingDurations, id: \.self) { Text($0.capitalized) } }
+      ) {
+        if note.type.isEmpty { Text(note.fullMeasureRest == true ? "Full bar" : "Unspecified").tag("") }
+        ForEach(editingDurations, id: \.self) { Text($0.capitalized) }
+      }
       Picker("Dots", selection: Binding(get: { note.dots }, set: { model.duration(note.type, $0) }))
       { ForEach(0...2, id: \.self) { Text(String($0)) } }
       Picker(

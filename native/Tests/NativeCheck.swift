@@ -137,7 +137,7 @@ import Foundation
     _ = try await store.save(composed, to: compositionTarget)
     try check(try String(contentsOf: compositionPath, encoding: .utf8) == composed, "Native structural save bytes")
     let bass = try await engine.decode(Note.self, "note", ["id": "0:0:1"])
-    try check(bass.rest && bass.staff == 2 && bass.duration == 4, "Insertion changed other staff identity/timing")
+    try check(bass.rest && bass.fullMeasureRest == true && bass.staff == 2 && bass.duration == 4, "Insertion changed other staff identity/timing/rest representation")
     _ = try await engine.call("delete", ["ids": ["0:0:0", chordId]])
     let erased = try await engine.decode(Note.self, "note", ["id": "0:0:0"])
     try check(erased.rest && erased.duration == 1, "Delete did not preserve event timing")

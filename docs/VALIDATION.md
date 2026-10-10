@@ -1,6 +1,6 @@
 # Historical 0.1 validation — 10 October 2026
 
-This records the initial React/Tauri checkpoint. For the current native Swift 0.4 release, use [SWIFT_NATIVE.md](SWIFT_NATIVE.md), [FULL_EDITOR.md](FULL_EDITOR.md) and the release handoff. The results below remain historical evidence and are not current native feature counts.
+This records the initial React/Tauri checkpoint. For the current native Swift release, use [SWIFT_NATIVE.md](SWIFT_NATIVE.md), [FULL_EDITOR.md](FULL_EDITOR.md) and the release handoff. The results below remain historical evidence and are not current native feature counts.
 
 This document distinguishes executed checks from outstanding qualification. The application is an initial release, with conservative safe operations; all five requested development phases are not complete.
 

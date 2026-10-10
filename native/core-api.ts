@@ -7,7 +7,7 @@ import {newScore} from '../src/core/new-score';
 import {notatedTime,Rational} from '../src/core/rational';
 import {copyNotes,pasteNotes} from '../src/core/clipboard';
 let doc:FastDocument;
-const viewNote=(n:any)=>({id:n.id,partId:n.partId,index:n.index,measureIndex:n.measureIndex,measureNumber:n.measureNumber,staff:n.staff,voice:n.voice,pitch:n.pitch??null,rest:n.rest,unpitched:n.unpitched,grace:n.grace,chord:n.chord,type:n.type,dots:n.dots,onset:Number(n.onset),duration:Number(n.duration),transpose:n.transpose,ties:n.ties,ratio:n.ratio??null});
+const viewNote=(n:any)=>({id:n.id,partId:n.partId,index:n.index,measureIndex:n.measureIndex,measureNumber:n.measureNumber,staff:n.staff,voice:n.voice,pitch:n.pitch??null,rest:n.rest,fullMeasureRest:n.fullMeasureRest,unpitched:n.unpitched,grace:n.grace,chord:n.chord,type:n.type,dots:n.dots,onset:Number(n.onset),duration:Number(n.duration),transpose:n.transpose,ties:n.ties,ratio:n.ratio??null});
 function keyboardPitch(id:string,letter:string,alter:number|null) {
   if(!['C','D','E','F','G','A','B'].includes(letter))throw new Error('Choose a note from A–G.');
   const n=doc.note(id),previous=doc.notes(0,doc.model.measures,n.partId).filter(p=>p.staff===n.staff&&p.voice===n.voice&&p.pitch&&(p.measureIndex<n.measureIndex||p.measureIndex===n.measureIndex&&p.index<n.index)).at(-1);

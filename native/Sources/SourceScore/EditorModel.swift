@@ -59,6 +59,7 @@ import UniformTypeIdentifiers
     editTail: Task<Void, Never>?, checkTimer: Timer?
   private var renderBusy = false, needsRender = false
   private var pendingEdits = 0
+  private var needsInitialSave = false
   var hasChangesToProtect: Bool { dirty || pendingEdits > 0 }
   let barsPerPage = 4
   var primary: Note? {
@@ -128,6 +129,7 @@ import UniformTypeIdentifiers
     summary = result
     stop()
     file = reference
+    needsInitialSave = false
     dirty = false
     canUndo = false
     canRedo = false
@@ -217,7 +219,7 @@ import UniformTypeIdentifiers
           barIndex = min(barIndex, max(0, (summary?.measureCount ?? 1) - 1))
         }
         page = min(page, max(0, ((summary?.measureCount ?? 1) - 1) / barsPerPage))
-        dirty = value.dirty
+        dirty = value.dirty || needsInitialSave
         canUndo = value.canUndo
         canRedo = value.canRedo
         revision = value.revision
@@ -249,6 +251,26 @@ import UniformTypeIdentifiers
   }
   func undo() { edit("undo", ["ids": Array(selection)]) }
   func redo() { edit("redo", ["ids": Array(selection)]) }
+  func undoCommand() {
+    if let text = NSApp.keyWindow?.firstResponder as? NSTextView {
+      text.undoManager?.undo()
+    } else { undo() }
+  }
+  func redoCommand() {
+    if let text = NSApp.keyWindow?.firstResponder as? NSTextView {
+      text.undoManager?.redo()
+    } else { redo() }
+  }
+  func selectAll() {
+    if let text = NSApp.keyWindow?.firstResponder as? NSTextView {
+      text.selectAll(nil)
+      return
+    }
+    let ids = scene?.targets.map { $0.id } ?? []
+    if let last = ids.last { select(last) }
+    selection = Set(ids)
+    selectedItemId = nil
+  }
   func deleteSelection() {
     if let id = selectedItemId, editTab == "Notation" {
       edit("delete-item", ["id": id])
@@ -360,6 +382,9 @@ import UniformTypeIdentifiers
           String.self, "new-score",
           ["title": title, "instruments": instruments, "bars": bars, "beats": beats, "unit": unit])
         try await load(source, reference: nil)
+        needsInitialSave = true
+        dirty = true
+        updateTitle()
         newScoreSheet = false
       } catch { self.error = errorMessage(error) }
     }
@@ -496,6 +521,7 @@ import UniformTypeIdentifiers
       }
       let result = try await files.save(source, to: target!)
       file = result.reference
+      needsInitialSave = false
       let state = try await core.decode(EditState.self, "mark-saved")
       dirty = state.dirty
       status =

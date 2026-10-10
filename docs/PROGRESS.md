@@ -1,10 +1,10 @@
-# Current development checkpoint — 0.4
+# Current development checkpoint — 0.4.1
 
 SourceScore's native Swift frontend now supports new compositions, note/rest input and deletion, chords and grace notes, ordinary rhythm resizing, representable tuplets, source clipboard, musical notation properties and synchronized bar/signature tools. The source remains in the same project folder; the `.app` is its compiled result.
 
 The preservation engine retains lexical source anchors, stable structural identities and exact mixed edit history. Semitone editing keeps its fast path. Structural changes validate candidates before committing; saving distinguishes new timing errors from pre-existing source diagnostics and keeps native backups/conflict protection.
 
-Executed checks include 82 source tests, TypeScript compilation and 29 generated MusicXML 4.0 XSD scenarios. Standalone Swift and engraving checks are repeated for the final release and recorded in the handoff. Native GUI checks in an intermediate 0.4 build exercised composition entry, event deletion, save/reopen and dynamic properties.
+Executed checks include 82 source tests, TypeScript compilation and 29 generated MusicXML 4.0 XSD scenarios. Standalone Swift and engraving checks cover the native release. Completed GUI checks now include text commands, new-score save protection, readable labels, entry, clipboard, deletion/history, semitone/page shortcuts, notation and save/reopen. See SWIFT_NATIVE.md for the executed evidence and the isolated test-copy boundary.
 
 ## Remaining scope
 

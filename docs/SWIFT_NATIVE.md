@@ -1,6 +1,22 @@
-# Swift native editor — 0.4
+# Swift native editor — 0.4.1
 
 The entry point is a SwiftUI App with native commands, dialogs, a white minimal interface and an AppKit vector canvas. The old command launcher was removed. Command+Left/Right flips shared pages; Up/Down moves by a semitone and Shift adds octave movement. Note entry and grouped Notes/Notation/Bar tools now support broader composition editing. The full capability boundary is in [FULL_EDITOR.md](FULL_EDITOR.md).
+
+## 0.4.1 native follow-up and executed GUI checks
+
+After the Mac was unlocked, native testing found and corrected missing text Select All, text Undo/Redo routing, initial save protection for new compositions, a clipped accidental label and a blank full-bar rest duration display.
+
+The corrected compiled frontend was tested in an isolated copy with a separate test app identifier, because multiple open SourceScore copies made the UI connection ambiguous. The application code and resources matched the production build; only test bundle identity and document registration metadata differed.
+
+- Cmd+A replaced the new-score title correctly; Cmd+Z and Cmd+Shift+Z restored/redid focused text editing.
+- A freshly created blank score showed Edited and prompted to save on Quit. Cancel retained the score; a successful Save cleared the unsaved state and subsequent Quit completed normally.
+- The entry strip displayed the full Key signature label, and the Notes inspector displayed Full bar for the full-measure rest.
+- C/D/E/F entry filled the first piano staff's bar and advanced the cursor. Cmd+C/V pasted C4 into bar 3. Delete replaced that note with a rest; Undo/Redo restored the appropriate note/rest.
+- Up changed C4 to C-sharp4. Undo restored its original spelling. Command+Right/Left moved between pages 1 and 2.
+- The grouped Notation list exposed bar, key, time and clef objects without redundant pitch/scalar rows. Typed cantabile text was added, saved via the native dialog and remained present after a fresh application launch and Open.
+- The saved generated score passed the local MusicXML 4.0 XSD. The earlier dynamic edit/delete and chord-entry check also produced a schema-valid saved file.
+
+These are executed local checks. Full professional editing parity remains bounded by [FULL_EDITOR.md](FULL_EDITOR.md).
 
 ## 0.4 changes and validation
 
@@ -15,7 +31,7 @@ The entry point is a SwiftUI App with native commands, dialogs, a white minimal 
 - An intermediate native 0.4 build created an eight-bar piano composition, entered C4/D4/E4/F4, deleted C4 into a quarter rest, saved through the native dialog and reopened with D4/E4/F4 intact. The notation inspector added mf, changed it to ff and deleted the marking while retaining note selection. Displayed operation measurements ranged from 8–39 ms in those checks; they are individual measurements, not guarantees.
 - Final standalone Swift checks passed for new composition/keyboard/chord input, notation responses, structural save, event deletion, exact mixed undo, empty-meter fitting/backups and the prior persistence/audio/playback/tie checks. The local pitch check measured 1.88 ms.
 - Final engraving checks passed for six-part synthetic and eight-part private fixtures, including bar/staff hit regions, unchanged XML and full note mapping. A generated composition with chord entry, tuplets, lyrics, articulation and dynamics also rendered with all source identities mapped.
-- The final release built as arm64 version 0.4.0 and passed strict bundle-signature verification. A final GUI visual pass is pending because the Mac locked; the preceding native UI checks above were executed before that lock.
+- The 0.4 release built as arm64 version 0.4.0 and passed strict bundle-signature verification. Its GUI pass was initially interrupted by a Mac lock; the subsequent completed follow-up is recorded above.
 
 The final native bridge, engraving and package checks are recorded in the release handoff. Complete professional parity, rebar/ripple editing, universal glyph manipulation and full orchestral qualification remain outstanding.
 
