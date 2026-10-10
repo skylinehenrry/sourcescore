@@ -1,5 +1,5 @@
 import { keyAlteration, type Pitch, type ScoreModel, type ScoreNote } from './model';
-import { child } from './xml';
+import { child,setField,ScoreError,type Patch } from './xml';
 import { tieTypes } from './pitch-links';
 
 const names: Record<number, string> = { '-2': 'flat-flat', '-1': 'flat', 0: 'natural', 1: 'sharp', 2: 'double-sharp' };
@@ -26,4 +26,31 @@ export function automaticAccidental(model: ScoreModel, note: ScoreNote, pitch: P
     active = values.size === 1 ? [...values][0] : undefined;
   }
   return active === pitch.alter ? '' : names[pitch.alter];
+}
+
+const noteOrder=['grace','cue','chord','pitch','unpitched','rest','duration','tie','instrument','footnote','level','voice','type','dot','accidental','time-modification','stem','notehead','notehead-text','staff','beam','notations','lyric','play','listen'];
+export function printedAccidentalPatches(source:string,node:ScoreNote['node'],current:string,required:string):Patch[] {
+  if(current===required)return [];
+  if(required)return [setField(source,node,'accidental',required,noteOrder,'Printed accidental')];
+  const printed=child(node,'accidental');if(!printed)return [];
+  if(/<!--|<!\[CDATA\[/.test(source.slice(printed.start,printed.end))||printed.children.length)throw new ScoreError('The redundant accidental contains annotations and cannot be removed safely.');
+  return [{start:printed.start,end:printed.end,text:'',label:'Remove redundant accidental'}];
+}
+
+/** Structural changes can alter the accidental needed by an otherwise unchanged later note. */
+export function structuralAccidentals(before:ScoreModel,after:ScoreModel):Patch[] {
+  const changed=new Set<string>(),bars=new Map(after.parts.flatMap(p=>p.measures.map(m=>[m.id,m] as const)));
+  for(const n of after.notes.values()){
+    const old=before.notes.get(n.id);
+    if(!old||JSON.stringify(old.pitch)!==JSON.stringify(n.pitch)||old.staff!==n.staff||old.keyFifths!==n.keyFifths||!old.onset.equals(n.onset))changed.add(after.parts.find(p=>p.id===n.partId)!.measures[n.measureIndex].id);
+  }
+  for(const n of before.notes.values())if(n.pitch&&!after.notes.has(n.id))changed.add(before.parts.find(p=>p.id===n.partId)!.measures[n.measureIndex].id);
+  const patches:Patch[]=[];
+  for(const id of changed){const bar=bars.get(id);if(!bar)continue;for(const n of bar.notes){
+    if(!n.pitch||!Number.isInteger(n.pitch.alter)||Math.abs(n.pitch.alter)>2)continue;
+    const old=before.notes.get(n.id),required=automaticAccidental(after,n,n.pitch,n=>n.pitch)??'';
+    const previous=old?.pitch?automaticAccidental(before,old,old.pitch,n=>n.pitch):undefined;
+    if(!old?.pitch||JSON.stringify(old.pitch)!==JSON.stringify(n.pitch)||old.staff!==n.staff||old.keyFifths!==n.keyFifths||previous!==required)patches.push(...printedAccidentalPatches(after.source,n.node,n.accidental,required));
+  }}
+  return patches;
 }

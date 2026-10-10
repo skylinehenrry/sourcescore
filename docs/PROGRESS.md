@@ -1,17 +1,17 @@
-# Initial development checkpoint
+# Current development checkpoint — 0.4
 
-## Implemented
+SourceScore's native Swift frontend now supports new compositions, note/rest input and deletion, chords and grace notes, ordinary rhythm resizing, representable tuplets, source clipboard, musical notation properties and synchronized bar/signature tools. The source remains in the same project folder; the `.app` is its compiled result.
 
-The requested project was created as an independent repository under Documents/Projects. The first usable foundation and a conservative portion of core editing are implemented, packaged and covered by executed tests. Pitch/accidental/chord correction is functional, and balanced duration changes use an explicit following-rest workflow. File bytes remain authoritative. See README for the precise supported domain and limitations.
+The preservation engine retains lexical source anchors, stable structural identities and exact mixed edit history. Semitone editing keeps its fast path. Structural changes validate candidates before committing; saving distinguishes new timing errors from pre-existing source diagnostics and keeps native backups/conflict protection.
 
-## Deferred capabilities
+Executed checks include 82 source tests, TypeScript compilation and 29 generated MusicXML 4.0 XSD scenarios. Standalone Swift and engraving checks are repeated for the final release and recorded in the handoff. Native GUI checks in an intermediate 0.4 build exercised composition entry, event deletion, save/reopen and dynamic properties.
 
-Advanced rhythmic editing (note insertion/deletion, rest splitting, ties, editable tuplets/beams), independent notation editing, complete concerto qualification, fully incremental parsing/layout, stronger exceptional-measure validation, crash recovery and distribution notarization are not implemented. These were deferred to preserve a working application and prevent unsafe XML guesses.
+## Remaining scope
 
-## Native qualification and next priority
+Comprehensive MuseScore/Dorico editing parity is not complete. [FULL_EDITOR.md](FULL_EDITOR.md) provides the implemented/partial/outstanding matrix and concrete next priorities. The largest remaining foundation is a temporal edit transaction for ripple insertion/removal and synchronized multi-voice rebar. Universal glyph selection/manipulation, complete palettes, coordinated exotic rhythms, part/instrument management and full real-score qualification also remain.
 
-The final packaged macOS save completion, Save As, reopen, conflict refusal, undo/redo and unsaved-close protection passed native smoke checks after the directory-read fix. There are 29 core tests, eight Rust file tests and 22 Chrome/WebKit interaction tests passing. Complete real concerto qualification and coordinated rest/tie/beam/tuplet operations are the next priorities.
+## Build and verify
 
-## Useful commands
+`npm run desktop:dev` builds and opens the native app. `npm run desktop:build` refreshes `releases/SourceScore.app`. `npm test`, `npm run desktop:test` and `npm run desktop:render:test` cover source semantics, native integration/persistence/audio and engraving. `npm run test:editing-schema -- /path/to/musicxml.xsd` checks generated workflow output against a local official MusicXML 4.0 schema.
 
-Run `npm run desktop:dev` to develop, `npm run desktop:build` to refresh the app, `npm test` for source/semantic checks, `npm run desktop:test` for persistence checks and `npm run test:ui` for browser interaction checks. The project's `.cache/playwright` is selected with `PLAYWRIGHT_BROWSERS_PATH="$PWD/.cache/playwright"` when running WebKit tests. The local Rust toolchain is selected automatically by the desktop script.
+The retained React/Tauri implementations and their browser/Rust results are historical; they do not substitute for native Swift feature testing. See [SWIFT_NATIVE.md](SWIFT_NATIVE.md) for current and historical validation, and [VALIDATION.md](VALIDATION.md) for the initial 0.1 evidence.

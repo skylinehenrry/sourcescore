@@ -32,6 +32,20 @@ import UniformTypeIdentifiers
   @Published var measureInput = ""
   @Published var lastEditMilliseconds: Double = 0
   @Published var programOverrides: [String: Int] = [:]
+  @Published var noteInput = false
+  @Published var inputType = "quarter"
+  @Published var inputDots = 0
+  @Published var inputGrace = false
+  @Published var inputChord = false
+  @Published var inputAlter: Int?
+  @Published var editTab = "Notes"
+  @Published var barPartId: String?
+  @Published var barIndex = 0
+  @Published var barStaff = 1
+  @Published var notationItems: [NotationItem] = []
+  @Published var selectedItemId: String?
+  @Published var newScoreSheet = false
+  private var leadNoteId: String?
   @Published var mixerVisible = false
   @Published var mix: [String: InstrumentMix] = [:]
   @Published var playbackBar = "1"
@@ -47,7 +61,11 @@ import UniformTypeIdentifiers
   private var pendingEdits = 0
   var hasChangesToProtect: Bool { dirty || pendingEdits > 0 }
   let barsPerPage = 4
-  var primary: Note? { selection.sorted().last.flatMap { notes[$0] } }
+  var primary: Note? {
+    (leadNoteId.flatMap { selection.contains($0) ? notes[$0] : nil })
+      ?? selection.sorted().last.flatMap { notes[$0] }
+  }
+  var selectedItem: NotationItem? { notationItems.first { $0.id == selectedItemId } }
   var pageCount: Int { max(1, ((summary?.measureCount ?? 0) + barsPerPage - 1) / barsPerPage) }
   var displayName: String { file?.url.lastPathComponent ?? summary?.title ?? "SourceScore" }
   init() {
@@ -117,6 +135,12 @@ import UniformTypeIdentifiers
     bpm = result.initialTempo
     notes = [:]
     selection = []
+    leadNoteId = nil
+    barPartId = result.parts.first?.id
+    barIndex = 0
+    barStaff = 1
+    notationItems = []
+    selectedItemId = nil
     page = 0
     scene = nil
     partId = nil
@@ -144,7 +168,12 @@ import UniformTypeIdentifiers
     } else {
       selection = [id]
     }
+    leadNoteId = id
     if let note = notes[id], !playing {
+      barPartId = note.partId
+      barIndex = note.measureIndex
+      barStaff = note.staff
+      if editTab != "Notes" { refreshItems() }
       setPlaybackStart(note.measureIndex)
       if audition, let part = effectivePart(note.partId) { audio.preview(note, part: part) }
     }
@@ -159,8 +188,35 @@ import UniformTypeIdentifiers
       await previous?.value
       let started = ProcessInfo.processInfo.systemUptime
       do {
-        let value = try await core.decode(EditState.self, method, args)
+        var operationArgs = args
+        operationArgs["selectionIds"] = Array(selection)
+        if method == "input", args["followCursor"] as? Bool == true, let current = primary {
+          operationArgs["id"] = current.id
+        }
+        let value = try await core.decode(EditState.self, method, operationArgs)
+        if value.structural == true {
+          notes = [:]
+          selection = []
+          leadNoteId = nil
+        }
         for note in value.notes { notes[note.id] = note }
+        if let ids = value.selection, !ids.isEmpty {
+          selection = Set(ids)
+          leadNoteId = ids.last
+        }
+        if let diagnostics = value.diagnostics { summary?.diagnostics = diagnostics }
+        if let count = value.measureCount { summary?.measureCount = count }
+        if let count = value.eventCount { summary?.eventCount = count }
+        if let parts = value.parts { summary?.parts = parts }
+        if let labels = value.measureLabels { summary?.measureLabels = labels }
+        if let current = primary {
+          barPartId = current.partId
+          barIndex = current.measureIndex
+          barStaff = current.staff
+        } else {
+          barIndex = min(barIndex, max(0, (summary?.measureCount ?? 1) - 1))
+        }
+        page = min(page, max(0, ((summary?.measureCount ?? 1) - 1) / barsPerPage))
         dirty = value.dirty
         canUndo = value.canUndo
         canRedo = value.canRedo
@@ -172,12 +228,147 @@ import UniformTypeIdentifiers
           audio.preview(note, part: part)
         }
         scheduleRender()
+        if editTab != "Notes" { refreshItems() }
+        if method == "input", noteInput, !inputChord, !inputGrace, args["chord"] as? Bool != true,
+          let id = value.selection?.first
+        {
+          let next = try await core.decode(Note.self, "input-next", ["id": id])
+          notes[next.id] = next
+          selection = [next.id]
+          leadNoteId = next.id
+          barPartId = next.partId
+          barIndex = next.measureIndex
+          barStaff = next.staff
+          if page != next.measureIndex / barsPerPage {
+            page = next.measureIndex / barsPerPage
+            scheduleRender()
+          }
+        }
       } catch { self.error = errorMessage(error) }
     }
   }
   func undo() { edit("undo", ["ids": Array(selection)]) }
   func redo() { edit("redo", ["ids": Array(selection)]) }
+  func deleteSelection() {
+    if let id = selectedItemId, editTab == "Notation" {
+      edit("delete-item", ["id": id])
+      selectedItemId = nil
+    } else if !selection.isEmpty {
+      edit("delete", ["ids": Array(selection)])
+    }
+  }
+  func copySelection(cut: Bool = false) {
+    if let text = NSApp.keyWindow?.firstResponder as? NSTextView {
+      if cut { text.cut(nil) } else { text.copy(nil) }
+      return
+    }
+    let ids = Array(selection)
+    Task {
+      await editTail?.value
+      do {
+        let payload = try await core.decode(String.self, "copy", ["ids": ids])
+        let type = NSPasteboard.PasteboardType("local.sourcescore.notes")
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(payload, forType: type)
+        if cut { edit("delete", ["ids": ids]) }
+      } catch { self.error = errorMessage(error) }
+    }
+  }
+  func pasteSelection() {
+    if let text = NSApp.keyWindow?.firstResponder as? NSTextView {
+      text.paste(nil)
+      return
+    }
+    guard let note = primary,
+      let payload = NSPasteboard.general.string(
+        forType: NSPasteboard.PasteboardType("local.sourcescore.notes"))
+    else {
+      error = "Copy a SourceScore passage, then select a destination rest."
+      return
+    }
+    edit("paste", ["id": note.id, "payload": payload])
+  }
+  func selectBar(_ target: BarTarget) {
+    selection = []
+    leadNoteId = nil
+    barPartId = target.partId
+    barIndex = target.measureIndex
+    barStaff = target.staff
+    inspector = true
+    editTab = "Bar"
+    setPlaybackStart(target.measureIndex)
+    refreshItems()
+  }
+  func refreshItems() {
+    guard let part = barPartId else { return }
+    let index = barIndex
+    let requestedRevision = revision
+    Task {
+      do {
+        let items = try await core.decode(
+          [NotationItem].self, "items", ["partId": part, "measureIndex": index])
+        guard barPartId == part, barIndex == index, revision == requestedRevision else { return }
+        notationItems = items
+        if let id = selectedItemId, !items.contains(where: { $0.id == id }) { selectedItemId = nil }
+      } catch { self.error = errorMessage(error) }
+    }
+  }
+  func enter(_ letter: String?, chord: Bool = false) {
+    guard let note = primary else {
+      error = "Select a rest or note. Click a bar to add a voice if it is empty."
+      return
+    }
+    var args: [String: Any] = [
+      "id": note.id, "type": inputType, "dots": inputDots, "chord": chord || inputChord,
+      "grace": inputGrace, "followCursor": noteInput,
+    ]
+    if let letter {
+      args["letter"] = letter
+      args["alter"] = inputAlter as Any? ?? NSNull()
+    }
+    edit("input", args)
+  }
+  func addMarking(_ kind: String, _ symbol: String = "", _ text: String = "") {
+    guard let note = primary else {
+      error = "Select a note or rest for the marking."
+      return
+    }
+    edit("marking", ["id": note.id, "kind": kind, "symbol": symbol, "text": text])
+    editTab = "Notation"
+  }
+  func addSpan(_ kind: String) {
+    edit("span", ["ids": Array(selection), "kind": kind])
+    editTab = "Notation"
+  }
+  func setBar(_ kind: String, _ values: [String: String]) {
+    guard let part = barPartId else { return }
+    edit(
+      "signature",
+      ["partId": part, "index": barIndex, "staff": barStaff, "kind": kind, "values": values])
+  }
+  func createVoice(_ voice: String) {
+    guard let part = barPartId else { return }
+    edit(
+      "create-voice", ["partId": part, "measureIndex": barIndex, "staff": barStaff, "voice": voice])
+    editTab = "Notes"
+  }
+  func createScore(title: String, instruments: [String], bars: Int, beats: Int, unit: Int) {
+    Task {
+      guard await allowReplace() else { return }
+      do {
+        let source = try await core.decode(
+          String.self, "new-score",
+          ["title": title, "instruments": instruments, "bars": bars, "beats": beats, "unit": unit])
+        try await load(source, reference: nil)
+        newScoreSheet = false
+      } catch { self.error = errorMessage(error) }
+    }
+  }
   func duration(_ type: String, _ dots: Int) {
+    guard let note = primary else { return }
+    edit("resize", ["id": note.id, "type": type, "dots": dots])
+  }
+  func legacyDurationPreview(_ type: String, _ dots: Int) {
     guard let note = primary else { return }
     Task {
       await editTail?.value

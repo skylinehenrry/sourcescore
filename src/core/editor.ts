@@ -1,6 +1,7 @@
 import { parseScore, changedEvents, keyAlteration, type Pitch, type ScoreModel, type ScoreNote, type Step, type Diagnostic } from './model';
 import { NOTE_TYPES, Rational, notatedTime, type NoteType } from './rational';
 import { applyPatches, child, children, field, insertPatch, qualified, scalarPatch, setField, ScoreError, type Patch } from './xml';
+import {captureIdentities,restoreIdentities} from './identity';
 
 const noteOrder = ['grace', 'cue', 'chord', 'pitch', 'unpitched', 'rest', 'duration', 'tie', 'instrument', 'footnote', 'level', 'voice', 'type', 'dot', 'accidental', 'time-modification', 'stem', 'notehead', 'notehead-text', 'staff', 'beam', 'notations', 'lyric', 'play', 'listen'];
 const accidentalNames: Record<number, string> = { '-2': 'flat-flat', '-1': 'flat', '0': 'natural', '1': 'sharp', '2': 'double-sharp' };
@@ -46,6 +47,7 @@ export class ScoreDocument {
     if (!patches.length) return;
     const source = applyPatches(before.source, patches);
     const after = parseScore(source);
+    restoreIdentities(after,captureIdentities(before));
     const existing = new Set(before.diagnostics.filter(d => d.severity === 'error').map(signature));
     const introduced = after.diagnostics.find(d => d.severity === 'error' && !existing.has(signature(d)));
     if (introduced) throw new ScoreError(`The edit was not applied: ${introduced.instrument}, measure ${introduced.measure}: ${introduced.message}`);
@@ -62,12 +64,12 @@ export class ScoreDocument {
   }
   undo() {
     if (!this.canUndo) return;
-    this.model = parseScore(applyPatches(this.source, this.history[this.cursor - 1].inverse));
+    const ids=captureIdentities(this.model);this.model = parseScore(applyPatches(this.source, this.history[this.cursor - 1].inverse));restoreIdentities(this.model,ids);
     this.cursor--; this.revision++;
   }
   redo() {
     if (!this.canRedo) return;
-    this.model = parseScore(applyPatches(this.source, this.history[this.cursor].forward));
+    const ids=captureIdentities(this.model);this.model = parseScore(applyPatches(this.source, this.history[this.cursor].forward));restoreIdentities(this.model,ids);
     this.cursor++; this.revision++;
   }
   editPitches(updates: Map<string, Pitch>) {

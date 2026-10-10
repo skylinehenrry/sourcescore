@@ -38,6 +38,8 @@ import WebKit
     scene.measureTops = result["measureTops"] as? [Double] ?? []
     scene.targets = try JSONDecoder().decode(
       [HitTarget].self, from: JSONSerialization.data(withJSONObject: result["targets"]!))
+    scene.bars = try JSONDecoder().decode(
+      [BarTarget].self, from: JSONSerialization.data(withJSONObject: result["bars"] ?? []))
     let notes = try JSONDecoder().decode(
       [Note].self, from: JSONSerialization.data(withJSONObject: result["notes"]!))
     for note in notes { if let pitch = note.pitch { scene.originalPitches[note.id] = pitch } }

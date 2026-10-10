@@ -113,5 +113,48 @@ import Foundation
     let retained = try await engine.decode(String.self, "source")
     try check(invalidBlocked && retained == tied, "Failed open replaced the active source")
     print("PASS Failed native open retains the previous score source")
+    let composition = try await engine.decode(
+      String.self, "new-score", ["title": "Native composition", "instruments": ["Piano"], "bars": 2])
+    _ = try await engine.call("open", ["source": composition])
+    let entered = try await engine.decode(
+      EditState.self, "input", ["id": "0:0:0", "letter": "B", "type": "quarter"])
+    try check(entered.notes.first(where: { $0.id == "0:0:0" })?.pitch?.label == "B3", "Keyboard entry octave")
+    let next = try await engine.decode(Note.self, "input-next", ["id": "0:0:0"])
+    let second = try await engine.decode(
+      EditState.self, "input", ["id": next.id, "letter": "C", "type": "quarter"])
+    try check(second.notes.first(where: { $0.id == next.id })?.pitch?.label == "C4", "Entry across octave boundary")
+    let chord = try await engine.decode(
+      EditState.self, "input", ["id": "0:0:0", "letter": "D", "type": "quarter", "chord": true])
+    let chordId = chord.selection!.first!
+    try check(chord.notes.first(where: { $0.id == chordId })?.chord == true, "Chord entry")
+    _ = try await engine.call("marking", ["id": "0:0:0", "kind": "dynamic", "symbol": "ff"])
+    let items = try await engine.decode([NotationItem].self, "items", ["partId": "P1", "measureIndex": 0])
+    try check(items.contains(where: { $0.kind == "dynamics" && $0.label.contains("ff") }), "Notation inspector bridge")
+    _ = try await engine.call("validate-save")
+    let compositionPath = directory.appendingPathComponent("composition.musicxml")
+    let composed = try await engine.decode(String.self, "source")
+    let compositionTarget = try await store.target(compositionPath)
+    _ = try await store.save(composed, to: compositionTarget)
+    try check(try String(contentsOf: compositionPath, encoding: .utf8) == composed, "Native structural save bytes")
+    let bass = try await engine.decode(Note.self, "note", ["id": "0:0:1"])
+    try check(bass.rest && bass.staff == 2 && bass.duration == 4, "Insertion changed other staff identity/timing")
+    _ = try await engine.call("delete", ["ids": ["0:0:0", chordId]])
+    let erased = try await engine.decode(Note.self, "note", ["id": "0:0:0"])
+    try check(erased.rest && erased.duration == 1, "Delete did not preserve event timing")
+    _ = try await engine.call("undo")
+    let deleteUndo = try await engine.decode(String.self, "source")
+    try check(deleteUndo == composed, "Native deletion undo changed bytes")
+    for _ in 0..<4 { _ = try await engine.call("undo") }
+    let compositionUndo = try await engine.decode(String.self, "source")
+    try check(compositionUndo == composition, "Mixed structural history did not restore source")
+    print("PASS Native new score, keyboard/chord entry, deletion, notation inspector, structural save and exact mixed undo")
+    _ = try await engine.call("signature", ["partId": "P1", "index": 0, "staff": 1, "kind": "time", "values": ["beats": "3", "unit": "4"]])
+    _ = try await engine.call("validate-save")
+    let emptyMeter = try await engine.decode(Note.self, "note", ["id": "0:1:1"])
+    try check(emptyMeter.rest && emptyMeter.duration == 3 && emptyMeter.onset == 0, "Empty meter did not fit both staves")
+    _ = try await engine.call("undo")
+    let meterUndo = try await engine.decode(String.self, "source")
+    try check(meterUndo == composition, "Meter fitting undo changed bytes")
+    print("PASS Native empty-bar meter change, voice backups and exact undo")
   }
 }

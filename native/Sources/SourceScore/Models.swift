@@ -66,6 +66,40 @@ struct EditState: Codable {
   var revision: Int
   var label: String
   var notes: [Note]
+  var structural: Bool?
+  var selection: [String]?
+  var diagnostics: [Diagnostic]?
+  var measureCount: Int?
+  var eventCount: Int?
+  var parts: [Part]?
+  var measureLabels: [String]?
+}
+struct PropertyField: Codable, Identifiable {
+  var key: String
+  var label: String
+  var value: String
+  var options: [String]?
+  var readOnly: Bool?
+  var id: String { key }
+}
+struct NotationItem: Codable, Identifiable {
+  var id: String
+  var kind: String
+  var label: String
+  var partId: String
+  var measureIndex: Int
+  var noteId: String?
+  var fields: [PropertyField]
+}
+struct BarTarget: Codable {
+  var partId: String
+  var measureIndex: Int
+  var staff: Int
+  var left: Double
+  var top: Double
+  var width: Double
+  var height: Double
+  var rect: CGRect { CGRect(x: left, y: top, width: width, height: height) }
 }
 struct Summary: Codable {
   var title: String

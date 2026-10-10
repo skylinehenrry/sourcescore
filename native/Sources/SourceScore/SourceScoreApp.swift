@@ -49,6 +49,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
     }.defaultSize(width: 1360, height: 900).commands {
       CommandGroup(replacing: .newItem) {
+        Button("New Score…") { model.newScoreSheet = true }.keyboardShortcut("n")
         Button("Open…", action: model.openPanel).keyboardShortcut("o")
         Button("Open Example", action: model.example)
       }
@@ -64,15 +65,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         Button("Redo", action: model.redo).keyboardShortcut("z", modifiers: [.command, .shift])
           .disabled(!model.canRedo)
       }
+      CommandGroup(replacing: .pasteboard) {
+        Button("Cut") { model.copySelection(cut: true) }.keyboardShortcut("x")
+        Button("Copy") { model.copySelection() }.keyboardShortcut("c")
+        Button("Paste", action: model.pasteSelection).keyboardShortcut("v")
+      }
       CommandMenu("Navigate") {
         Button("Previous Page") { model.flip(-1) }.keyboardShortcut(.leftArrow, modifiers: .command)
           .disabled(model.page == 0)
         Button("Next Page") { model.flip(1) }.keyboardShortcut(.rightArrow, modifiers: .command)
           .disabled(model.page + 1 >= model.pageCount)
       }
+      CommandMenu("Edit Music") {
+        Toggle("Note Input", isOn: $model.noteInput)
+        Button("Delete Notes / Marking", action: model.deleteSelection)
+      }
       CommandMenu("Playback") {
-        Button(model.playing ? "Stop" : "Play", action: model.togglePlayback).keyboardShortcut(
-          .space, modifiers: [])
+        Button(model.playing ? "Stop" : "Play", action: model.togglePlayback)
         Toggle("Audition Selected and Edited Notes", isOn: $model.audition)
         Toggle("Follow Playback", isOn: $model.followPlayback)
         Toggle("Mixer", isOn: $model.mixerVisible).keyboardShortcut(
@@ -84,7 +93,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 }
 struct EditorWindow: View {
   @ObservedObject var model: EditorModel
-  private let types = ["whole", "half", "quarter", "eighth", "16th", "32nd", "64th"]
   var body: some View {
     VStack(spacing: 0) {
       HStack(spacing: 16) {
@@ -110,6 +118,10 @@ struct EditorWindow: View {
         }
       }.padding(.horizontal, 20).padding(.vertical, 12)
       Divider()
+      if model.summary != nil {
+        NoteEntryBar(model: model)
+        Divider()
+      }
       HStack(spacing: 0) {
         if model.instruments, let summary = model.summary {
           VStack(alignment: .leading, spacing: 8) {
@@ -138,15 +150,18 @@ struct EditorWindow: View {
         } else {
           VStack(spacing: 18) {
             Image(systemName: "music.note").font(.system(size: 42, weight: .light))
-            Text("Open a MusicXML score").font(.title2)
-            Button("Open…", action: model.openPanel).keyboardShortcut("o")
+            Text("SourceScore").font(.title2)
+            HStack(spacing: 16) {
+              Button("New score…") { model.newScoreSheet = true }.keyboardShortcut("n")
+              Button("Open…", action: model.openPanel).keyboardShortcut("o")
+            }
             Button("Orchestral example", action: model.example).buttonStyle(.plain).foregroundStyle(
               .secondary)
           }.frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        if model.inspector, let note = model.primary {
+        if model.inspector, model.summary != nil {
           Divider()
-          inspector(note).frame(width: 210).padding(18)
+          EditingPanel(model: model)
         }
       }.background(.white)
       if model.mixerVisible, let summary = model.summary {
@@ -195,172 +210,93 @@ struct EditorWindow: View {
         }
         if model.dirty { Text("Edited") }
       }.font(.caption).foregroundStyle(.secondary).padding(.horizontal, 16).padding(.vertical, 7)
-    }.background(.white).toolbar {
-      ToolbarItemGroup(placement: .navigation) {
-        Button(action: model.openPanel) { Image(systemName: "folder") }.help("Open")
-        Button {
-          Task { await model.save() }
-        } label: {
-          Image(systemName: "square.and.arrow.down")
-        }.disabled(model.summary == nil).help("Save")
-        Button(action: model.undo) { Image(systemName: "arrow.uturn.backward") }.disabled(
-          !model.canUndo)
-        Button(action: model.redo) { Image(systemName: "arrow.uturn.forward") }.disabled(
-          !model.canRedo)
-      }
-      ToolbarItemGroup(placement: .principal) {
-        Button(action: model.togglePlayback) {
-          Image(systemName: model.playing || model.preparingPlayback ? "stop.fill" : "play.fill")
-        }.disabled(model.summary == nil).help(
-          model.playing ? "Stop playback" : "Play from selected bar")
-        Text("From bar").font(.caption).foregroundStyle(.secondary)
-        TextField("Bar", text: Binding(get: { model.playbackBar }, set: model.setPlaybackBar))
-          .frame(width: 45).accessibilityLabel("Play from bar").onSubmit(model.playFromBar)
-        TextField("BPM", value: $model.bpm, format: .number).frame(width: 42)
-        Text("BPM").font(.caption).foregroundStyle(.secondary)
-        Toggle(isOn: $model.audition) { Image(systemName: "speaker.wave.2") }.toggleStyle(.button)
-          .help("Audition notes")
-        Button {
-          model.mixerVisible.toggle()
-        } label: {
-          Image(systemName: "slider.horizontal.3")
+    }.background(.white).sheet(isPresented: $model.newScoreSheet) { NewScoreSheet(model: model) }
+      .toolbar {
+        ToolbarItemGroup(placement: .navigation) {
+          Button(action: model.openPanel) { Image(systemName: "folder") }.help("Open")
+          Button {
+            Task { await model.save() }
+          } label: {
+            Image(systemName: "square.and.arrow.down")
+          }.disabled(model.summary == nil).help("Save")
+          Button(action: model.undo) { Image(systemName: "arrow.uturn.backward") }.disabled(
+            !model.canUndo)
+          Button(action: model.redo) { Image(systemName: "arrow.uturn.forward") }.disabled(
+            !model.canRedo)
         }
-        .help("Mixer · Mute or solo instruments").accessibilityLabel("Mixer")
-        Toggle(isOn: $model.followPlayback) {
-          Image(systemName: "rectangle.and.arrow.up.right.and.arrow.down.left")
+        ToolbarItemGroup(placement: .principal) {
+          Button(action: model.togglePlayback) {
+            Image(systemName: model.playing || model.preparingPlayback ? "stop.fill" : "play.fill")
+          }.disabled(model.summary == nil).help(
+            model.playing ? "Stop playback" : "Play from selected bar")
+          Text("From bar").font(.caption).foregroundStyle(.secondary)
+          TextField("Bar", text: Binding(get: { model.playbackBar }, set: model.setPlaybackBar))
+            .frame(width: 45).accessibilityLabel("Play from bar").onSubmit(model.playFromBar)
+          TextField("BPM", value: $model.bpm, format: .number).frame(width: 42)
+          Text("BPM").font(.caption).foregroundStyle(.secondary)
+          Toggle(isOn: $model.audition) { Image(systemName: "speaker.wave.2") }.toggleStyle(.button)
+            .help("Audition notes")
+          Button {
+            model.mixerVisible.toggle()
+          } label: {
+            Image(systemName: "slider.horizontal.3")
+          }
+          .help("Mixer · Mute or solo instruments").accessibilityLabel("Mixer")
+          Toggle(isOn: $model.followPlayback) {
+            Image(systemName: "rectangle.and.arrow.up.right.and.arrow.down.left")
+          }
+          .toggleStyle(.button).help("Follow playback pages").accessibilityLabel("Follow playback")
         }
-        .toggleStyle(.button).help("Follow playback pages").accessibilityLabel("Follow playback")
-      }
-      ToolbarItemGroup(placement: .automatic) {
-        Button {
-          model.zoom = max(0.35, model.zoom - 0.1)
-        } label: {
-          Image(systemName: "minus.magnifyingglass")
-        }
-        Text("\(Int(model.zoom*100))%").font(.caption)
-        Button {
-          model.zoom = min(2, model.zoom + 0.1)
-        } label: {
-          Image(systemName: "plus.magnifyingglass")
-        }
-        Button {
-          model.instruments.toggle()
-        } label: {
-          Image(systemName: "sidebar.left")
-        }
-        Button {
-          model.inspector.toggle()
-        } label: {
-          Image(systemName: "sidebar.right")
-        }
-        Button {
-          model.diagnostics.toggle()
-        } label: {
-          Image(systemName: "exclamationmark.circle")
-        }
-      }
-    }.alert(
-      "Operation could not be completed",
-      isPresented: Binding(get: { model.error != nil }, set: { if !$0 { model.error = nil } })
-    ) {
-      Button("OK") { model.error = nil }
-    } message: {
-      Text(model.error ?? "")
-    }
-    .sheet(
-      isPresented: Binding(
-        get: { model.pendingPlan != nil }, set: { if !$0 { model.pendingPlan = nil } })
-    ) {
-      VStack(alignment: .leading, spacing: 20) {
-        Text("Keep the measure balanced").font(.headline)
-        Text(model.planDescription)
-        HStack {
-          Spacer()
-          Button("Cancel") { model.pendingPlan = nil }
-          Button("Apply", action: model.applyDuration).keyboardShortcut(.defaultAction)
-        }
-      }.padding(24).frame(width: 440)
-    }
-  }
-  private func inspector(_ note: Note) -> some View {
-    VStack(alignment: .leading, spacing: 18) {
-      Text(note.label).font(.system(size: 28, weight: .light))
-      Text("Measure \(note.measureNumber) · Staff \(note.staff) · Voice \(note.voice)").font(
-        .caption
-      ).foregroundStyle(.secondary)
-      if let pitch = note.pitch {
-        if !note.ties.isEmpty {
-          Text("Pitch edits change the connected tied notes together.").font(.caption)
-            .foregroundStyle(.secondary)
-        }
-        HStack {
-          Picker(
-            "Step",
-            selection: Binding(
-              get: { pitch.step },
-              set: {
-                model.edit(
-                  "pitch",
-                  [
-                    "id": note.id,
-                    "pitch": ["step": $0, "alter": pitch.alter, "octave": pitch.octave],
-                  ])
-              })
-          ) { ForEach(["C", "D", "E", "F", "G", "A", "B"], id: \.self) { Text($0) } }.labelsHidden()
-          Stepper(
-            "Octave \(pitch.octave)",
-            value: Binding(
-              get: { pitch.octave },
-              set: {
-                model.edit(
-                  "pitch",
-                  [
-                    "id": note.id,
-                    "pitch": ["step": pitch.step, "alter": pitch.alter, "octave": $0],
-                  ])
-              }), in: 0...9)
-        }
-        HStack {
-          ForEach([-2, -1, 0, 1, 2], id: \.self) { alter in
-            Button(["𝄫", "♭", "♮", "♯", "𝄪"][alter + 2]) {
-              model.edit("accidental", ["ids": Array(model.selection), "alter": alter])
-            }.font(.title3).buttonStyle(.borderless).frame(maxWidth: .infinity)
+        ToolbarItemGroup(placement: .automatic) {
+          Button {
+            model.zoom = max(0.35, model.zoom - 0.1)
+          } label: {
+            Image(systemName: "minus.magnifyingglass")
+          }
+          Text("\(Int(model.zoom*100))%").font(.caption)
+          Button {
+            model.zoom = min(2, model.zoom + 0.1)
+          } label: {
+            Image(systemName: "plus.magnifyingglass")
+          }
+          Button {
+            model.instruments.toggle()
+          } label: {
+            Image(systemName: "sidebar.left")
+          }
+          Button {
+            model.inspector.toggle()
+          } label: {
+            Image(systemName: "sidebar.right")
+          }
+          Button {
+            model.diagnostics.toggle()
+          } label: {
+            Image(systemName: "exclamationmark.circle")
           }
         }
-        Button("Enharmonic spelling") { model.edit("respell", ["id": note.id, "direction": 1]) }
-          .buttonStyle(.plain).font(.caption)
-        Text("↑ ↓ semitone · ⇧ ↑ ↓ octave").font(.caption2).foregroundStyle(.tertiary)
+      }.alert(
+        "Operation could not be completed",
+        isPresented: Binding(get: { model.error != nil }, set: { if !$0 { model.error = nil } })
+      ) {
+        Button("OK") { model.error = nil }
+      } message: {
+        Text(model.error ?? "")
       }
-      Divider()
-      Picker(
-        "Duration", selection: Binding(get: { note.type }, set: { model.duration($0, note.dots) })
-      ) { ForEach(types, id: \.self) { Text($0) } }
-      HStack {
-        Picker(
-          "Dots", selection: Binding(get: { note.dots }, set: { model.duration(note.type, $0) })
-        ) { ForEach(0...2, id: \.self) { Text(String($0)) } }
-        Picker(
-          "Voice",
-          selection: Binding(
-            get: { note.voice }, set: { model.edit("voice", ["id": note.id, "voice": $0]) })
-        ) { ForEach(1...8, id: \.self) { Text(String($0)).tag(String($0)) } }
+      .sheet(
+        isPresented: Binding(
+          get: { model.pendingPlan != nil }, set: { if !$0 { model.pendingPlan = nil } })
+      ) {
+        VStack(alignment: .leading, spacing: 20) {
+          Text("Keep the measure balanced").font(.headline)
+          Text(model.planDescription)
+          HStack {
+            Spacer()
+            Button("Cancel") { model.pendingPlan = nil }
+            Button("Apply", action: model.applyDuration).keyboardShortcut(.defaultAction)
+          }
+        }.padding(24).frame(width: 440)
       }
-      if let part = model.effectivePart(note.partId) {
-        Divider()
-        Text(part.name).font(.caption).fixedSize(horizontal: false, vertical: true)
-        Picker(
-          "Sound",
-          selection: Binding(get: { part.program }, set: { model.setProgram(part.id, $0) })
-        ) { ForEach(Self.sounds, id: \.0) { entry in Text(entry.1).tag(entry.0) } }.labelsHidden()
-        Button("Play this instrument") {
-          model.soloOnly(part.id)
-          model.setPlaybackStart(note.measureIndex)
-          model.mixerVisible = true
-          model.playFromBar()
-        }.buttonStyle(.plain).font(.caption)
-      }
-      Spacer()
-    }
   }
   static let sounds = [
     (0, "Piano"), (9, "Glockenspiel"), (40, "Violin"), (41, "Viola"), (42, "Cello"),

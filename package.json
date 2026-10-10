@@ -1,12 +1,13 @@
 {
   "name": "sourcescore",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "tsc -b && vite build",
     "test": "vitest run",
+    "test:editing-schema": "tsx scripts/editing-schema.ts",
     "test:ui": "playwright test",
     "bench": "tsx scripts/benchmark.ts",
     "compare": "tsx scripts/compare.ts",

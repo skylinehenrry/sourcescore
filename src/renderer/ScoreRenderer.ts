@@ -144,6 +144,9 @@ export class ScoreRenderer {
       return system ? (system.PositionAndShape.AbsolutePosition.y+system.PositionAndShape.BorderTop)*10 : 0;
     });
   }
+  barTargets(start:number) {
+    return this.osmd.GraphicSheet.MeasureList.flatMap((staves,i)=>staves.filter(Boolean).map(m=>({partId:m.ParentStaff.ParentInstrument.IdString,measureIndex:start+i,staff:m.ParentStaff.ParentInstrument.Staves.indexOf(m.ParentStaff)+1,left:m.PositionAndShape.AbsolutePosition.x*10,top:m.ParentStaffLine.PositionAndShape.AbsolutePosition.y*10-15,width:m.PositionAndShape.Size.width*10,height:m.ParentStaffLine.StaffHeight*10+30})));
+  }
   measureAlignment() {
     return this.osmd.GraphicSheet.MeasureList.map((staves,index)=>({index,staves:staves.filter(Boolean).map(m=>({x:m.PositionAndShape.AbsolutePosition.x,width:m.PositionAndShape.Size.width}))}));
   }

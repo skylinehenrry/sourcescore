@@ -2,7 +2,9 @@ import { ScoreDocument, pitchText, type EditPlan } from './editor';
 import { parseScore, changedEvents, keyAlteration, type Pitch, type ScoreNote, type Step } from './model';
 import { applyPatches, child, children, encodeXml, field, parseXml, qualified, setField, scalarPatch, ScoreError, type Patch } from './xml';
 import { PitchLinks, tieTypes, tiedElements, nextFret } from './pitch-links';
-import { automaticAccidental } from './accidentals';
+import { automaticAccidental,printedAccidentalPatches,structuralAccidentals } from './accidentals';
+import {captureIdentities,restoreIdentities,patchedIdentities,type IdentitySnapshot} from './identity';
+import {StructureEditor,inheritedAttributes,type StructuralEdit} from './structure';
 
 const order = ['grace','cue','chord','pitch','unpitched','rest','duration','tie','instrument','footnote','level','voice','type','dot','accidental','time-modification','stem','notehead','notehead-text','staff','beam','notations','lyric','play','listen'];
 const accidentals: Record<number,string> = { '-2':'flat-flat','-1':'flat','0':'natural','1':'sharp','2':'double-sharp' };
@@ -26,7 +28,7 @@ export function chromaticPitch(note: ScoreNote, delta: number): Pitch {
   return candidates[0].pitch;
 }
 interface LocalState { xml:string; pitch:Pitch; accidental:string }
-type History = { kind:'pitch'; label:string; before:Map<string,LocalState>; after:Map<string,LocalState> } | { kind:'full'; label:string; before:string; after:string };
+type History = { kind:'pitch'; label:string; before:Map<string,LocalState>; after:Map<string,LocalState> } | { kind:'full'; label:string; before:string; after:string;beforeIds:IdentitySnapshot;afterIds:IdentitySnapshot };
 
 /** Persistent source anchors plus note-local overrides. No score-wide parse on pitch input. */
 export class FastDocument {
@@ -35,13 +37,17 @@ export class FastDocument {
   private history:History[]=[];
   private cursor=0;
   private saved:string;
+  private savedIds:IdentitySnapshot;
   private composed?:string;
   private dirtyState=false;
   revision=0;
   lastLabel='';
   lastChangedIds:string[]=[];
   private links?:PitchLinks;
-  constructor(source:string) { this.base=new ScoreDocument(source); this.saved=source; }
+  private nextIdentity=1;
+  lastStructural=false;
+  selectionAfter:string[]=[];
+  constructor(source:string) { this.base=new ScoreDocument(source); this.saved=source;this.savedIds=captureIdentities(this.model); }
   get model() { return this.base.model; }
   get dirty() { return this.dirtyState; }
   get canUndo() { return this.cursor>0; }
@@ -73,6 +79,7 @@ export class FastDocument {
     return `<source-root ${[...namespaces].map(([key,v])=>`${key}="${encodeXml(v)}"`).join(' ')}>`;
   }
   editPitches(updates:Map<string,Pitch>) {
+    this.lastStructural=false;this.selectionAfter=[];
     this.lastChangedIds=[];
     const coordinated=new Map<string,Pitch>();
     for(const [id,pitch] of updates) {
@@ -105,8 +112,18 @@ export class FastDocument {
       if(field(candidate,checkedPitch,'step')!==pitch.step||Number(field(candidate,checkedPitch,'alter','0'))!==pitch.alter||Number(field(candidate,checkedPitch,'octave'))!==pitch.octave) throw new ScoreError('The local pitch patch failed validation.');
       before.set(id,current); after.set(id,{xml:candidate.slice(prefix.length,-'</source-root>'.length),pitch:{...pitch},accidental});
     }
+    const bars=new Map<string,ScoreNote[]>();
+    for(const id of after.keys()){const n=this.note(id),key=`${n.partId}:${n.measureIndex}:${n.staff}`;bars.set(key,this.model.parts.find(p=>p.id===n.partId)!.measures[n.measureIndex].notes.filter(p=>p.staff===n.staff));}
+    for(const notes of bars.values())for(const n of notes){
+      if(after.has(n.id)||!n.pitch||!Number.isInteger(n.pitch.alter)||Math.abs(n.pitch.alter)>2)continue;
+      const pitch=this.note(n.id).pitch!,was=automaticAccidental(this.model,n,pitch,n=>this.note(n.id).pitch),required=automaticAccidental(this.model,n,pitch,n=>coordinated.get(n.id)??this.note(n.id).pitch);
+      if(was===required)continue;
+      const current=this.local(n.id),prefix=this.wrapper(n),text=prefix+current.xml+'</source-root>',root=parseXml(text).children[0],patches=printedAccidentalPatches(text,root,current.accidental,required??'');
+      if(!patches.length)continue;
+      const changed=applyPatches(text,patches);before.set(n.id,current);after.set(n.id,{xml:changed.slice(prefix.length,-'</source-root>'.length),pitch:{...pitch},accidental:required??''});
+    }
     if(!after.size) return;
-    const label=after.size===1?`Pitch ${pitchText([...after.values()][0].pitch)}`:`Change ${after.size} connected pitches`;
+    const label=coordinated.size===1?`Pitch ${pitchText([...coordinated.values()][0])}`:`Change ${coordinated.size} connected pitches`;
     this.record({kind:'pitch',label,before,after});
     this.applyStates(after); this.dirtyState=true;
   }
@@ -132,22 +149,38 @@ export class FastDocument {
     const index=note.pitch.octave*7+steps.indexOf(note.pitch.step)+direction,step=steps[((index%7)+7)%7],octave=Math.floor(index/7);
     this.editPitches(new Map([[id,{step,octave,alter:midiPitch(note.pitch)-((octave+1)*12+semis[step])}]]));
   }
-  private rebase(source:string) { this.base=new ScoreDocument(source); this.links=undefined; this.lastChangedIds=[]; this.overrides.clear(); this.composed=source; this.revision++; }
+  private rebase(source:string,ids:IdentitySnapshot=captureIdentities(this.model)) { this.base=new ScoreDocument(source);restoreIdentities(this.model,ids); this.links=undefined; this.lastChangedIds=[]; this.overrides.clear(); this.composed=source; this.revision++; }
   private flush() { if(this.overrides.size) this.rebase(this.source); }
   planDuration(id:string,type:string,dots:number) { this.flush(); return {...this.base.planDuration(id,type as any,dots),revision:this.revision}; }
-  duration(plan:EditPlan) { if(plan.revision!==this.revision)throw new ScoreError('The score changed while this operation was being previewed. Choose the duration again.');const before=this.source; this.base.applyPlan({...plan,revision:this.base.revision}); const after=this.base.source; if(before!==after) {this.record({kind:'full',label:plan.label,before,after});this.rebase(after);this.dirtyState=true;} }
-  voice(id:string,voice:string) { this.flush(); const before=this.source; this.base.changeVoice(id,voice); const after=this.base.source; if(before!==after) {this.record({kind:'full',label:`Voice ${voice}`,before,after});this.rebase(after);this.dirtyState=true;} }
-  undo() { if(!this.canUndo)return;const record=this.history[--this.cursor];if(record.kind==='pitch')this.applyStates(record.before);else this.rebase(record.before);this.lastLabel='Undo '+record.label;this.dirtyState=this.source!==this.saved; }
-  redo() { if(!this.canRedo)return;const record=this.history[this.cursor++];if(record.kind==='pitch')this.applyStates(record.after);else this.rebase(record.after);this.lastLabel='Redo '+record.label;this.dirtyState=this.source!==this.saved; }
+  duration(plan:EditPlan) { if(plan.revision!==this.revision)throw new ScoreError('The score changed while this operation was being previewed. Choose the duration again.');const before=this.source,beforeIds=captureIdentities(this.model); this.base.applyPlan({...plan,revision:this.base.revision}); const after=this.base.source; if(before!==after) {this.record({kind:'full',label:plan.label,before,after,beforeIds,afterIds:captureIdentities(this.model)});this.rebase(after);this.lastStructural=true;this.selectionAfter=plan.ids;this.dirtyState=true;} }
+  voice(id:string,voice:string) { this.flush(); const before=this.source,beforeIds=captureIdentities(this.model); this.base.changeVoice(id,voice); const after=this.base.source; if(before!==after) {this.record({kind:'full',label:`Voice ${voice}`,before,after,beforeIds,afterIds:captureIdentities(this.model)});this.rebase(after);this.lastStructural=true;this.selectionAfter=[id];this.dirtyState=true;} }
+  undo() { if(!this.canUndo)return;const record=this.history[--this.cursor];this.lastStructural=record.kind==='full';this.selectionAfter=[];if(record.kind==='pitch')this.applyStates(record.before);else this.rebase(record.before,record.beforeIds);this.lastLabel='Undo '+record.label;this.dirtyState=this.source!==this.saved; }
+  redo() { if(!this.canRedo)return;const record=this.history[this.cursor++];this.lastStructural=record.kind==='full';this.selectionAfter=[];if(record.kind==='pitch')this.applyStates(record.after);else this.rebase(record.after,record.afterIds);this.lastLabel='Redo '+record.label;this.dirtyState=this.source!==this.saved; }
+  structure(operation:(editor:StructureEditor)=>StructuralEdit){this.flush();this.lastStructural=false;this.selectionAfter=[];this.lastChangedIds=[];this.applyStructure(operation(new StructureEditor(this.model)));}
+  applyStructure(plan:StructuralEdit){
+    const before=this.source,beforeModel=this.model,beforeIds=captureIdentities(beforeModel);let after=applyPatches(before,plan.patches);if(after===before)return;
+    let candidate=parseScore(after);patchedIdentities(beforeModel,candidate,plan.patches,kind=>`${kind}:${this.nextIdentity++}`,plan.retained);
+    let cursorId:string|undefined;if(plan.cursor){const delta=plan.patches.filter(p=>p.start<plan.cursor!.start&&p.end<=plan.cursor!.start).reduce((sum,p)=>sum+p.text.length-(p.end-p.start),0);const at=plan.cursor.start+delta+plan.cursor.relative;cursorId=[...candidate.notes.values()].find(n=>n.node.start===at)?.id;}
+    if(plan.fitRests){const previousBars=new Map(beforeModel.parts.flatMap(p=>p.measures.map(m=>[m.id,m] as const))),changed=new Set<string>();for(const p of candidate.parts)for(const m of p.measures){const old=previousBars.get(m.id);if(old&&[...new Set([...old.expected.keys(),...m.expected.keys()])].some(staff=>String(old.expected.get(staff))!==String(m.expected.get(staff))))changed.add(m.id);}
+      const fit=new StructureEditor(candidate).fitEmptyBars(changed);if(fit.patches.length){const fitted=applyPatches(after,fit.patches);if(fitted!==after){const previous=candidate;candidate=parseScore(fitted);patchedIdentities(previous,candidate,fit.patches,kind=>`${kind}:${this.nextIdentity++}`,fit.retained);after=fitted;}}}
+    const accidentalChanges=structuralAccidentals(beforeModel,candidate);if(accidentalChanges.length){const ids=captureIdentities(candidate);after=applyPatches(after,accidentalChanges);candidate=parseScore(after);restoreIdentities(candidate,ids);}
+    const signature=(d:any)=>`${d.key}:${d.actual??''}:${d.expected??''}`,old=new Set(beforeModel.diagnostics.filter(d=>d.severity==='error').map(signature));
+    const timing=new Set(['INCOMPLETE','OVERFILLED','FORWARD','VOICE_OVERLAP','NOTATION_DURATION']);
+    const added=candidate.diagnostics.find(d=>d.severity==='error'&&!old.has(signature(d))&&!(plan.allowTiming&&timing.has(d.code)));if(added)throw new ScoreError('Edit rejected: '+added.message);
+    const afterIds=captureIdentities(candidate);this.record({kind:'full',label:plan.label,before,after,beforeIds,afterIds});this.rebase(after,afterIds);this.lastStructural=true;this.dirtyState=true;this.selectionAfter=[];
+    if(cursorId&&this.model.notes.has(cursorId))this.selectionAfter=[cursorId];
+    this.lastChangedIds=this.selectionAfter;
+  }
   validateSave() {
     const candidate=parseScore(this.source), initial=parseScore(this.saved);
+    restoreIdentities(candidate,captureIdentities(this.model));restoreIdentities(initial,this.savedIds);
     const signature=(d:any)=>`${d.key}:${d.actual??''}:${d.expected??''}`;
     const old=new Set(initial.diagnostics.filter(d=>d.severity==='error').map(signature));
     const added=candidate.diagnostics.find(d=>d.severity==='error'&&!old.has(signature(d)));
     if(added)throw new ScoreError(`Saving blocked: ${added.message}`);
     return {existing:candidate.diagnostics.filter(d=>d.severity==='error').length};
   }
-  markSaved(){this.saved=this.source;this.dirtyState=false;}
+  markSaved(){this.saved=this.source;this.savedIds=captureIdentities(this.model);this.dirtyState=false;}
   renderSlice(start:number,count:number,partId?:string) {
     const model=this.model,source=model.source;
     let xml=source.slice(model.root.start,model.root.openEnd)+model.root.children.filter(c=>c.local!=='part').map(c=>source.slice(c.start,c.end)).join('');
@@ -156,7 +189,7 @@ export class FastDocument {
       xml+=source.slice(part.node.start,part.node.openEnd);
       for(const [i,measure] of part.measures.slice(start,start+count).entries()) {
         let raw=this.sourceRange(measure.node.start,measure.node.end);
-        if(i===0&&start>0&&measure.renderAttributes.length) {const tag=qualified(measure.node,'attributes'),at=measure.node.openEnd-measure.node.start;raw=raw.slice(0,at)+`<${tag}>${measure.renderAttributes.join('')}</${tag}>`+raw.slice(at);}
+        if(i===0&&start>0&&measure.renderAttributes.length) {const tag=qualified(measure.node,'attributes'),at=measure.node.openEnd-measure.node.start;raw=raw.slice(0,at)+`<${tag}>${inheritedAttributes(measure.renderAttributes)}</${tag}>`+raw.slice(at);}
         xml+=raw;noteIds.push(...measure.notes.map(n=>n.id));
       }
       xml+=`</${part.node.name}>`;

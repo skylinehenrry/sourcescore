@@ -1,8 +1,25 @@
-# Swift native editor — 0.3
+# Swift native editor — 0.4
 
-The entry point is a SwiftUI App with native commands, dialogs, a white minimal interface and an AppKit vector canvas. The old command launcher was removed. Command+Left/Right flips shared pages; Up/Down moves by a semitone and Shift adds octave movement. Conservative duration/rest/chord/voice workflows remain in a compact inspector.
+The entry point is a SwiftUI App with native commands, dialogs, a white minimal interface and an AppKit vector canvas. The old command launcher was removed. Command+Left/Right flips shared pages; Up/Down moves by a semitone and Shift adds octave movement. Note entry and grouped Notes/Notation/Bar tools now support broader composition editing. The full capability boundary is in [FULL_EDITOR.md](FULL_EDITOR.md).
 
-## 0.3 changes and executed validation
+## 0.4 changes and validation
+
+- New native composition setup; A–G/R entry, automatic cursor advance, rest splitting, chords, grace notes, values/dots, individual/event deletion and compensating duration edits.
+- Structural identity snapshots preserve surviving note/bar identities across insertion, deletion, rebasing and mixed pitch/structural undo. Generated identities never become MusicXML IDs.
+- A native musical property inspector adds/edits/deletes common notation, lyrics, text, dynamics and tempo. Pitch fields remain in the coordinated pitch path; unsafe independent paired-marker type/number edits are replaced by endpoint/span operations. Existing note and bar objects have source-aligned native hit targets.
+- Voice creation, staff reassignment, synchronized bar insertion/deletion and signatures/repeats. Inserted/deleted bars carry inherited attributes in valid MusicXML order while retaining original labels and unrelated source. Conventional empty bars fit changed meters, with coordinated backup values and protection for marked/extended rests.
+- Single-voice/staff source clipboard, with written pitch and defined span/reference omissions. Incompatible musical namespaces, discontinuous passages and undersized destinations are rejected; copied MusicXML unique note IDs are removed.
+- Accidental decisions also propagate to affected later notes after pitch/structural/key changes. New chord selection survives an accidental inserted on an existing root. Ordinary visible tempo/dynamic edits coordinate existing playback fields.
+- **82 source tests passed**, including structural source isolation, unknown/prefixed XML, exact timing, chord root promotion, grace timing, tuplets and metadata, stable identities/history, signatures, meter fitting, spans, clipboard and the prior 122,250-event pitch regression. TypeScript compilation passed.
+- Official local MusicXML 4.0 XSD checks passed for **28 generated editing stages plus an empty piano meter scenario**. These validate generated workflow output and do not establish full runtime/schema coverage of arbitrary imports and extensions. The optional repeatable command is `npm run test:editing-schema -- /path/to/musicxml.xsd`; the schema's `xml.xsd` and `xlink.xsd` imports must be available locally. The check skips explicitly if the schema is absent.
+- An intermediate native 0.4 build created an eight-bar piano composition, entered C4/D4/E4/F4, deleted C4 into a quarter rest, saved through the native dialog and reopened with D4/E4/F4 intact. The notation inspector added mf, changed it to ff and deleted the marking while retaining note selection. Displayed operation measurements ranged from 8–39 ms in those checks; they are individual measurements, not guarantees.
+- Final standalone Swift checks passed for new composition/keyboard/chord input, notation responses, structural save, event deletion, exact mixed undo, empty-meter fitting/backups and the prior persistence/audio/playback/tie checks. The local pitch check measured 1.88 ms.
+- Final engraving checks passed for six-part synthetic and eight-part private fixtures, including bar/staff hit regions, unchanged XML and full note mapping. A generated composition with chord entry, tuplets, lyrics, articulation and dynamics also rendered with all source identities mapped.
+- The final release built as arm64 version 0.4.0 and passed strict bundle-signature verification. A final GUI visual pass is pending because the Mac locked; the preceding native UI checks above were executed before that lock.
+
+The final native bridge, engraving and package checks are recorded in the release handoff. Complete professional parity, rebar/ripple editing, universal glyph manipulation and full orchestral qualification remain outstanding.
+
+## 0.3 changes and executed validation (historical)
 
 - Complete tie chains are indexed by exact rational musical time, voice, sounding pitch and visual tie number. A selected continuation changes all connected notes atomically, retaining original tie notation and exact undo. Missing/ambiguous/conditional endpoints remain guarded. Ordinary fret changes follow semitone movement on the existing string; a below-open-string move, harmonic or bend remains guarded.
 - Automatic accidental glyphs use the active key context, staff, octave, earlier alterations and simultaneous conflicts. Pitch alteration is independent of the printed glyph. Existing courtesy markings are preserved. This follows MusicXML's distinction between [pitch alteration and printed accidental](https://www.w3.org/2021/06/musicxml40/musicxml-reference/elements/accidental/) and [sounding and notated ties](https://www.w3.org/2021/06/musicxml40/musicxml-reference/elements/tied/).

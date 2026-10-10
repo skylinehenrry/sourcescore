@@ -177,6 +177,11 @@ final class CanvasView: NSView {
         range: event.modifierFlags.contains(.shift))
     } else {
       model.selection = []
+      if let bar = scene.bars.filter({ $0.rect.contains(p) }).min(by: {
+        abs($0.rect.midY - p.y) < abs($1.rect.midY - p.y)
+      }) {
+        model.selectBar(bar)
+      }
       needsDisplay = true
     }
   }
@@ -191,6 +196,22 @@ final class CanvasView: NSView {
   }
   override func keyDown(with event: NSEvent) {
     guard let model else { return }
+    if event.modifierFlags.contains(.command),
+      let key = event.charactersIgnoringModifiers?.lowercased()
+    {
+      if key == "c" {
+        model.copySelection()
+        return
+      }
+      if key == "x" {
+        model.copySelection(cut: true)
+        return
+      }
+      if key == "v" {
+        model.pasteSelection()
+        return
+      }
+    }
     if event.modifierFlags.contains(.command) && [123, 124].contains(event.keyCode) {
       model.flip(event.keyCode == 124 ? 1 : -1)
       return
@@ -202,8 +223,40 @@ final class CanvasView: NSView {
         ["ids": Array(model.selection), "delta": event.keyCode == 126 ? 1 : -1])
     case 123, 124: model.adjacent(event.keyCode == 124 ? 1 : -1)
     case 49: model.togglePlayback()
-    case 53: model.selection = []
+    case 53:
+      model.noteInput = false
+      model.selection = []
+      model.selectedItemId = nil
+    case 51, 117: model.deleteSelection()
     default:
+      if !event.modifierFlags.contains(.command),
+        let character = event.charactersIgnoringModifiers?.lowercased()
+      {
+        if character == "n" {
+          model.noteInput.toggle()
+          return
+        }
+        if model.noteInput {
+          if "abcdefg".contains(character), character.count == 1 {
+            model.enter(character.uppercased(), chord: event.modifierFlags.contains(.shift))
+            return
+          }
+          if character == "r" {
+            model.enter(nil)
+            return
+          }
+          if character == "." {
+            model.inputDots = (model.inputDots + 1) % 3
+            return
+          }
+          if let key = Int(character), (1...9).contains(key) {
+            model.inputType =
+              ["64th", "32nd", "16th", "eighth", "quarter", "half", "whole", "breve", "long"][
+                key - 1]
+            return
+          }
+        }
+      }
       if let key = event.characters, let number = Int(key), number >= 1 && number <= 7 {
         model.duration(
           ["64th", "32nd", "16th", "eighth", "quarter", "half", "whole"][number - 1],

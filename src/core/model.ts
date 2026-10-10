@@ -22,6 +22,7 @@ export interface ScoreMeasure {
   id: string; partId: string; index: number; number: string; node: XmlElement;
   notes: ScoreNote[]; expected: Map<number, Rational | undefined>;
   irregular: boolean; renderAttributes: string[]; extent: Rational;
+  endCursor?: Rational;
 }
 export interface ScorePart { id: string; name: string; index: number; staves: number; node: XmlElement; measures: ScoreMeasure[] }
 export interface ScoreModel {
@@ -151,6 +152,7 @@ export function parseScore(source: string): ScoreModel {
           lastNote = note;
         }
       }
+      measure.endCursor=cursor;
       // Attribute changes follow score time, including voices encoded after a backup.
       if (keyChanges.length) {
         keyState.clear(); nonTraditionalKeys.clear(); keyContexts.clear();

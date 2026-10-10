@@ -40,7 +40,7 @@ export class PitchLinks {
         }
         if (children(n.node, 'tie').some(e => e.attributes['time-only']) || n.grace) this.problems.add(n.id);
       }
-      const numbers = (n: ScoreNote, type: string) => tiedElements(n).filter(e => e.attributes.type === type).map(e => e.attributes.number ?? '1');
+      const numbers = (n: ScoreNote, type: string) => tiedElements(n).filter(e => e.attributes.type === type || e.attributes.type === 'continue').map(e => e.attributes.number ?? '1');
       for (const n of notes.filter(n => tieTypes(n).has('start'))) {
         const key = timeKey(n, starts[n.measureIndex].add(n.onset).add(n.duration));
         let candidates = (stops.get(key) ?? []).filter(next => next.id !== n.id);

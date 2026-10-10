@@ -14,7 +14,7 @@ const renderer=new ScoreRenderer(host);
   svg.setAttribute('height',String(height));
   svg.setAttribute('viewBox',`0 0 ${width} ${height}`);
   const shape=svg.getBoundingClientRect();
-  return {svg:svg.outerHTML,width:shape.width,height:shape.height,targets:result.targets,notes:payload.notes,revision:payload.revision,start:payload.start??0,measureTops:renderer.measureTops(),mappedCount:result.mappedCount,sourceCount:result.sourceCount,alignment:renderer.measureAlignment(),spacing:renderer.instrumentSpacing()};
+  return {svg:svg.outerHTML,width:shape.width,height:shape.height,targets:result.targets,bars:renderer.barTargets(payload.start??0),notes:payload.notes,revision:payload.revision,start:payload.start??0,measureTops:renderer.measureTops(),mappedCount:result.mappedCount,sourceCount:result.sourceCount,alignment:renderer.measureAlignment(),spacing:renderer.instrumentSpacing()};
 };
 renderer.useSharedPageLayout(4);
 function ready(){(globalThis as any).webkit?.messageHandlers?.rendererReady?.postMessage('ready');}
