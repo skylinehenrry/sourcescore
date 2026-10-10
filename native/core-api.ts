@@ -23,12 +23,15 @@ function playback() {
   const starts:number[]=[];let total=0;for(const length of lengths){starts.push(total);total+=length;}
   const tempos:{beat:number;bpm:number}[]=[];
   const events:any[]=[];const open=new Map<string,any>();
+  const dynamicValues:Record<string,number>={ppp:30,pp:42,p:54,mp:66,mf:80,f:96,ff:112,fff:124,sfz:116,fp:88};
+  const dynamicChanges:{partId:string;staff:number;beat:number;velocity:number}[]=[];
   for(const p of model.parts) for(const m of p.measures) {
-    for(const direction of children(m.node,'direction')) {const sound=child(direction,'sound');const bpm=Number(sound?.attributes.tempo);if(bpm>0)tempos.push({beat:starts[m.index],bpm});}
+    for(const direction of children(m.node,'direction')) {const sound=child(direction,'sound');const following=m.notes.find(n=>n.node.start>direction.start);const beat=starts[m.index]+Number(following?.onset??0);const bpm=Number(sound?.attributes.tempo);if(bpm>0)tempos.push({beat,bpm});const dynamics=child(child(direction,'direction-type')??direction,'dynamics');const explicit=Number(sound?.attributes.dynamics);const velocity=explicit>0?Math.round(explicit*0.9):dynamics?dynamicValues[dynamics.children[0]?.local]:undefined;if(velocity)dynamicChanges.push({partId:p.id,staff:Number(field(model.source,direction,'staff','0')),beat,velocity});}
     for(const base of m.notes) {
       const n=doc.note(base.id);if(!n.pitch||n.rest)continue;
       const pitch=midiPitch(n.pitch)+n.transpose;if(pitch<0||pitch>127)continue;
-      const event={id:n.id,partId:n.partId,measureIndex:n.measureIndex,voice:n.voice,midi:pitch,beat:starts[m.index]+Number(n.onset),duration:n.grace?0.15:Number(n.duration),velocity:88,grace:n.grace};
+      const beat=starts[m.index]+Number(n.onset),dynamic=dynamicChanges.filter(d=>d.partId===n.partId&&(d.staff===0||d.staff===n.staff)&&d.beat<=beat).at(-1);
+      const event={id:n.id,partId:n.partId,measureIndex:n.measureIndex,voice:n.voice,midi:pitch,beat,duration:n.grace?0.15:Number(n.duration),velocity:Math.min(127,Math.max(1,dynamic?.velocity??88)),grace:n.grace};
       const key=`${n.partId}:${n.voice}:${pitch}`;
       if(n.ties.includes('stop')&&open.has(key)){const previous=open.get(key);previous.duration=event.beat+event.duration-previous.beat;if(!n.ties.includes('start'))open.delete(key);continue;}
       events.push(event);if(n.ties.includes('start'))open.set(key,event);

@@ -1,6 +1,6 @@
 {
   "name": "sourcescore",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -10,10 +10,12 @@
     "test:ui": "playwright test",
     "bench": "tsx scripts/benchmark.ts",
     "compare": "tsx scripts/compare.ts",
-    "desktop:dev": "node scripts/desktop.mjs dev",
-    "desktop:build": "node scripts/desktop.mjs build --bundles app",
-    "desktop:test": "node scripts/desktop.mjs test",
-    "tauri": "tauri"
+    "desktop:dev": "node scripts/native-build.mjs && open releases/SourceScore.app",
+    "desktop:build": "node scripts/native-build.mjs",
+    "desktop:test": "node scripts/native-test.mjs",
+    "tauri": "tauri",
+    "legacy:desktop:build": "node scripts/desktop.mjs build --bundles app",
+    "legacy:desktop:test": "node scripts/desktop.mjs test"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.0.0",

@@ -1,82 +1,69 @@
-# SourceScore — graphical MusicXML editor
+# SourceScore
 
-SourceScore is a standalone Tauri 2 application for macOS Apple Silicon. It edits the original UTF-8 MusicXML source with local range patches and uses OpenSheetMusicDisplay for engraving. The engraving library never supplies the saved document.
+A native macOS graphical MusicXML editor that keeps the original XML authoritative. Version 0.2 uses **SwiftUI and AppKit**, a white minimal interface and a native Core Graphics score canvas. Launch `releases/SourceScore.app` directly; no command file, development server or account is needed.
 
-This is an initial usable implementation of the foundation and conservative core editing workflows. Advanced notation editing and production qualification for complete concertos remain unfinished.
+## Build
 
-## Launch
-
-Open `releases/SourceScore.app` or double-click `Launch SourceScore.command`. No development server, account or internet connection is needed by the packaged application. The build is local and ad hoc signed; it has not been notarized for public distribution.
-
-Project location: `/Users/henry/Documents/Projects/Lossless MusicXML Editor`.
-
-## Build and develop
-
-Requires Node 22.18+ and the Apple Command Line Tools. A project-local Rust toolchain is installed in `.toolchain/`; `scripts/desktop.mjs` selects it automatically. On another machine, install a normal Rust toolchain and run:
+Requires macOS 14+, Apple Silicon, Swift Command Line Tools and Node 22+ for bundling the portable source and engraving components.
 
 ```sh
 npm ci
-npm run desktop:dev
+npm run desktop:build
 ```
 
-Package the native application with `npm run desktop:build`. Tauri writes `src-tauri/target/release/bundle/macos/SourceScore.app`; the desktop script also refreshes the convenient `releases/SourceScore.app` copy. `npm run dev` starts a browser preview whose Save operation downloads a copy instead of overwriting disk files.
+The result is `releases/SourceScore.app`. `npm run desktop:dev` builds and opens it. The bundle is locally ad hoc signed; public distribution notarization is not configured.
 
-## Working features
+## Use
 
-- Native opening of `.musicxml` and `.xml`, Save, Save As, macOS menus and conventional shortcuts.
-- Actual engraved notation with individually selectable notes and rests, including independent chord pitches. Selection persists after supported edits and rerendering.
-- Written-pitch step, octave, natural, sharp, flat, double accidentals and enharmonic spelling. Arrow keys, octave shortcuts, vertical dragging, multiple selection and selection across measures are supported.
-- Whole through 64th durations, up to two dots, and rest/chord duration editing **when an adjacent ordinary rest can explicitly compensate for the change**. A preview names all coordinated events before applying them.
-- Conservative voice reassignment when the target voice has no overlap and the event has no linked notation requiring coordinated updates.
-- Instrument search, full-score/isolated-instrument views, zoom, scrolling, source measure labels and measure-position navigation.
-- Background parsing/validation, engraving of 4/8/16-measure windows, diagnostics with navigation and staff highlighting, session edit history, undo and redo.
-- Byte-identical no-op saves in the supported input domain, backups before changed overwrites, temporary-file writes, atomic rename, revision checks and external-change detection.
+- Native Open/Save/Save As, undo/redo and conventional Cmd+O/S/Z shortcuts.
+- Click individual notes or rests, including chord pitches. Cmd-click extends selection; Shift-click selects a range within the current instrument/page.
+- **Up/Down: one semitone. Shift+Up/Down: one octave.** Explicit accidental and enharmonic spelling controls remain available. Chromatic spelling respects conventional key signatures where possible.
+- **Option+Left / Option+Right: previous/next page.** Each page shares the same measure range across instruments; source part-local breaks and multi-rest compression cannot independently paginate staves.
+- Duration/dots and safe voice changes use a compact inspector. Duration changes preview the compensating following rest before applying.
+- Instrument isolation, source measure labels, zoom, diagnostics and optional panels keep the main score view simple.
 
-## Preservation and safety
+## Responsiveness
 
-Supported edits update scalar ranges or insert/remove necessary local child elements. Untouched whitespace, comments, attributes, metadata, element order and unsupported notation stay in the original source. UTF-8 BOM and CRLF are retained. Existing courtesy-accidental attributes are preserved when an accidental changes.
+Pitch input validates and patches only the selected note. Persistent source anchors and local overrides preserve other bytes. Swift receives only changed note properties. The native canvas reflects the pitch immediately, followed by a debounced engraving refresh. Full-score validation happens before saving on a background queue.
 
-Backups are stored beside the score in `.sourcescore-backups/`, with the original filename and a unique suffix. To recover, copy a backup to a new `.musicxml` filename and open it. SourceScore never silently repairs unrelated notation. Pre-existing diagnostics are separated from new errors; edits introducing new blocking errors or changing unintended normalized note events are rejected before commitment.
+The native JavaScriptCore smoke test measured about 1.3 ms for an edit; a real native UI operation reported 29 ms. These are individual local measurements, not guarantees for every score. A 122,250-event regression confirms rapid pitch edits do not rebuild the full model.
 
-The source engine uses UTF-16 string offsets and exact UTF-8 decoding/re-encoding; offsets are never confused with disk byte positions. This yields unchanged bytes outside the intended patches for accepted UTF-8 inputs. It does not claim universal losslessness for every MusicXML dialect or file encoding.
+## Playback
 
-Original-file hashes are checked before and immediately before replacement; Save As also guards its target revision. There remains a narrow race with a non-cooperating external writer between the final check and rename. Files and backups are flushed before rename. Power-loss durability of the directory entry depends on the filesystem. POSIX mode bits are copied; extended attributes, ACLs and resource forks are not copied to the replacement. Network filesystems have not been qualified.
+Play or press Space to hear the score from the current selection/page. Selected and edited notes can be auditioned immediately. AVAudioEngine and separate AVAudioUnitSampler instances use the macOS General MIDI DLS sound bank for different instruments. XML MIDI programs are respected; instrument names supply fallback programs. The inspector can change the audition sound without altering MusicXML.
 
-## Current limits
+Tempo changes, transposition, voice/chord timing and basic sounding ties are interpreted. The tempo field controls speed; additional SF2/DLS banks can be selected. This is MIDI audition, not a sampled-orchestra performance or a complete articulation/ornament realization. Unpitched percussion and exceptional performance conventions need broader qualification.
 
-- UTF-8, uncompressed, score-partwise documents only. `.mxl`, score-timewise, non-UTF-8 encodings and custom XML entity declarations are rejected without modifying the input.
-- Pitch changes of tied notes, microtones and explicit fret encodings are blocked. Automatic diatonic movement in nontraditional keys is blocked; explicit step/accidental choices remain available. Courtesy-accidental creation/removal is not exposed as a separate operation.
-- Duration changes of tuplets, tremolos, grace notes, ties, beamed groups, unequal-duration chords and whole-measure rests are blocked. Fractional numeric fields can be read exactly; the duration editor currently writes integer ticks only.
-- No insertion/deletion, rest splitting, tie-chain editing, independent slur/articulation/dynamics/clef/key/time editing or coordinated divisions/backup/forward changes. These elements remain preserved through unrelated supported edits.
-- Cross-staff source is interpreted and preserved; dense cross-staff engraving still depends on OSMD and needs broader visual regression testing. Its display is not identical to MuseScore/Dorico engraving, and renderer-unsupported symbols can be absent from the view while remaining in the source.
-- Validation covers supported note structure and temporal rules, not the complete MusicXML XSD or every legal irregular measure. Written/sounding duration differences are advisory outside tuplets; cross-staff/partial-voice/implicit/non-controlling/free-time completeness checks are conservative. Tie checks detect some unmatched stops, not all invalid chains. Instrument transposition is shown in semitones; exotic per-staff/nontraditional key signatures need further work.
-- An edit currently reparses the complete source in the worker. On the recorded 122,250-event synthetic score a pitch edit took about 1.8 seconds. Rendering is bounded to the current passage, but fully incremental semantic parsing, layout caching and continuous page virtualization are still needed.
+## Preservation
 
-## Verification
+Original UTF-8 XML stays authoritative. The engraver never supplies save output. Unknown elements, comments, attributes, whitespace, metadata and order survive unrelated local edits. No-op saves retain the original bytes, BOM and line endings.
+
+The portable source engine runs in JavaScriptCore. OSMD runs in a private offscreen WebKit engraving context and returns vectors with exact source-note identities. **All visible controls and the score canvas are native Swift/AppKit; there is no HTML editing interface.** Fractional timing is adapted only in the presentation copy; saved numerical fields remain original.
+
+Changed overwrites create recoverable backups in `.sourcescore-backups/`, flush a same-directory temporary file and rename atomically. Revision checks prevent external-file conflicts, including Save As targets. New errors are distinguished from pre-existing diagnostics. Native alerts protect unsaved edits.
+
+## Limits
+
+- UTF-8, uncompressed score-partwise input only. Compressed/timewise files and custom entity declarations are safely rejected.
+- Tied/microtonal/fretted pitches and advanced tuplet/tie/beam/grace rhythms are guarded. Duration editing writes integer ticks and requires a representable, positive following rest.
+- No insertion/deletion, rest splitting or independent slur/dynamics/clef/key/time editor. Complete concerto qualification and full schema validation remain outstanding.
+- Shared pages contain four measures. Engraving is not pixel-identical to MuseScore; source breaks/spacing are adapted for the editing view.
+- Native replacement preserves POSIX mode bits, not ACLs/xattrs/resource forks. A narrow race remains between the final revision check and rename; directory-entry power-loss durability depends on the filesystem.
+
+## Verify
 
 ```sh
 npm test
 npm run desktop:test
 npm run test:ui
-npm run bench
 npm run compare -- original.musicxml edited.musicxml expected-note-id
 ```
 
-UI tests use installed Chrome and a Playwright WebKit runtime. To install WebKit into the project cache:
+`desktop:test` runs a standalone Swift check executable, without requiring full Xcode/XCTest. It tests JavaScriptCore edits, exact native saves/backups/conflicts, native vectors, tempo conversion and actual offline piano/flute audio. UI tests use Chrome and WebKit; install WebKit into the project cache if needed:
 
 ```sh
 PLAYWRIGHT_BROWSERS_PATH="$PWD/.cache/playwright" npx playwright install webkit
 PLAYWRIGHT_BROWSERS_PATH="$PWD/.cache/playwright" npm run test:ui
 ```
 
-The tests compare both exact source output and normalized events, including written pitch, transposition, accidentals, duration, onset, staff, voice, chord/grace state and tuplets. Private real-world fixtures in `fixtures/local/` are intentionally ignored by Git and skipped when absent. The accessible Rachmaninoff variation 18 excerpt has 8 parts, 17 measures and 853 events; it is not a complete concerto. No files in Automatic Accompaniment were edited.
-
-See `docs/VALIDATION.md` for executed results, `docs/ARCHITECTURE.md` for implementation choices and `docs/benchmark-results.json` for measurements.
-
-## Next development priorities
-
-1. Qualify complete real concerto fixtures and visually inspect dense piano/cross-staff/tied/tuplet passages against a reference reader.
-2. Add explicit rest insertion/splitting and coordinated beaming/tuplet/tie operations with source-byte and event-isolation regression tests.
-3. Implement incremental measure parsing, smaller worker snapshots and cached page/system layout to reduce large-score edit latency.
-4. Strengthen staff-specific transposition, nontraditional keys, irregular-measure/tie validation and optional schema diagnostics.
-5. Automate native lifecycle coverage across OS versions, add crash recovery and accessibility keyboard focus, and finish distribution signing/notarization.
+Private orchestral fixtures are ignored by Git and skipped when absent. Only a synthetic study is included. The prior Tauri implementation remains available for comparison through `legacy:desktop:build` / `legacy:desktop:test`. See `docs/SWIFT_NATIVE.md` for the migration and validation; other development documents record historical checkpoints.
