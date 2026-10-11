@@ -6,19 +6,52 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
   weak var model: EditorModel?
   private var reopenObserver: NSObjectProtocol?
   private var pendingFiles: [String] = []
+  private weak var editorWindow: NSWindow?
+  private var openingEditor = false
+  var openEditorWindow: (() -> Void)?
   func applicationDidFinishLaunching(_ notification: Notification) {
+    if let url = Bundle.main.url(forResource: "AppIcon", withExtension: "icns"),
+      let icon = NSImage(contentsOf: url) { NSApp.applicationIconImage = icon }
     reopenObserver = DistributedNotificationCenter.default().addObserver(
       forName: ApplicationInstance.reopenNotification, object: nil, queue: .main
     ) { [weak self] notification in
       Task { @MainActor in
-        NSApp.activate(ignoringOtherApps: true)
-        NSApp.windows.first(where: { $0.canBecomeMain })?.makeKeyAndOrderFront(nil)
+        self?.bringEditorForward()
         if let files = notification.userInfo?["files"] as? [String] { self?.open(files) }
       }
     }
   }
+  func registerEditorWindow(_ window: NSWindow) {
+    editorWindow = window
+    openingEditor = false
+    window.delegate = self
+  }
+  /// Finder and Dock reopen the running app instead of starting another process.
+  func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+    return !bringEditorForward()
+  }
+  @discardableResult private func bringEditorForward() -> Bool {
+    NSApp.unhideWithoutActivation()
+    NSApp.activate(ignoringOtherApps: true)
+    if let window = editorWindow {
+      if window.isMiniaturized { window.deminiaturize(nil) }
+      window.makeKeyAndOrderFront(nil)
+      window.orderFrontRegardless()
+      return true
+    }
+    if let openEditorWindow {
+      if !openingEditor { openingEditor = true; openEditorWindow() }
+      return true
+    }
+    return false
+  }
+  func windowWillClose(_ notification: Notification) {
+    if let window = notification.object as? NSWindow, window === editorWindow { editorWindow = nil }
+  }
+  func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
   func attach(_ model: EditorModel) {
     self.model = model
+    DispatchQueue.main.async { model.updateTitle() }
     let files = pendingFiles
     pendingFiles = []
     open(files)
@@ -50,6 +83,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     Task {
       if await model.allowReplace() {
         model.stop()
+        if sender === self.editorWindow { self.editorWindow = nil }
         sender.delegate = nil
         sender.close()
       }
@@ -73,13 +107,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     _model = StateObject(wrappedValue: EditorModel())
   }
   var body: some Scene {
-    WindowGroup {
-      EditorWindow(model: model).frame(minWidth: 1000, minHeight: 680).preferredColorScheme(.light)
+    WindowGroup(model.displayName + (model.dirty ? " • Edited" : ""), id: "editor") {
+      EditorHost(model: model, delegate: delegate).frame(minWidth: 1000, minHeight: 680).preferredColorScheme(.light)
         .tint(.black)
         .onAppear {
-          delegate.attach(model)
-          DispatchQueue.main.async { NSApp.windows.first?.delegate = delegate }
-          if let path = CommandLine.arguments.dropFirst().first(where: {
+          if model.summary == nil, let path = CommandLine.arguments.dropFirst().first(where: {
             $0.lowercased().hasSuffix(".musicxml") || $0.lowercased().hasSuffix(".xml")
           }) {
             Task { await model.open(URL(fileURLWithPath: path)) }
@@ -130,6 +162,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         Button("Refresh Installed Sounds", action: model.refreshSounds)
         Button("Import SINE Preset…", action: model.importSinePreset)
       }
+    }
+  }
+}
+private struct EditorHost: View {
+  @ObservedObject var model: EditorModel
+  let delegate: AppDelegate
+  @Environment(\.openWindow) private var openWindow
+  var body: some View {
+    EditorWindow(model: model).background(EditorWindowReference(delegate: delegate))
+      .onAppear {
+        delegate.openEditorWindow = { [openWindow] in openWindow(id: "editor") }
+        delegate.attach(model)
+      }
+  }
+}
+private struct EditorWindowReference: NSViewRepresentable {
+  let delegate: AppDelegate
+  func makeNSView(context: Context) -> ReferenceView { ReferenceView(delegate: delegate) }
+  func updateNSView(_ view: ReferenceView, context: Context) {}
+  final class ReferenceView: NSView {
+    weak var appDelegate: AppDelegate?
+    init(delegate: AppDelegate) { appDelegate = delegate; super.init(frame: .zero) }
+    required init?(coder: NSCoder) { return nil }
+    override func viewDidMoveToWindow() {
+      super.viewDidMoveToWindow()
+      if let window { appDelegate?.registerEditorWindow(window) }
     }
   }
 }

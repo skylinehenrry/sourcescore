@@ -1,6 +1,8 @@
-# Current development checkpoint — 0.5.1
+# Current development checkpoint — 0.5.2
 
 SourceScore's native Swift frontend now supports new compositions, note/rest input and deletion, chords and grace notes, ordinary rhythm resizing, representable tuplets, source clipboard, musical notation properties and synchronized bar/signature tools. The source remains in the same project folder; the `.app` is its compiled result.
+
+The 0.5.2 update gives the app icon a white background and dark music symbol. macOS reopen requests and requests from another app copy target the main score window, restoring it when hidden or minimized. Closing the window keeps the session alive; reopening restores the same score. Repeated requests during window creation are coalesced, and instrument settings windows do not replace the score window as the reopen target.
 
 The 0.5.1 update fixes octave-shift lines crossing page boundaries. Page views receive temporary continuation and endpoint directions, allowing playback to turn pages without the renderer losing an 8va endpoint. The original MusicXML and sounding pitches remain unchanged. Outdated or cancelled renders no longer raise alerts, and JavaScript rendering failures retain their specific error message. All 130 page views of a 14-part, 520-measure concerto passed the native WebKit check; the private score is not included in the repository. Berlin instrument playback introduced in 0.5.0 is retained.
 
