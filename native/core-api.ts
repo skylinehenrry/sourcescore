@@ -7,7 +7,28 @@ import {newScore} from '../src/core/new-score';
 import {notatedTime,Rational} from '../src/core/rational';
 import {copyNotes,pasteNotes} from '../src/core/clipboard';
 let doc:FastDocument;
-const viewNote=(n:any)=>({id:n.id,partId:n.partId,index:n.index,measureIndex:n.measureIndex,measureNumber:n.measureNumber,staff:n.staff,voice:n.voice,pitch:n.pitch??null,rest:n.rest,fullMeasureRest:n.fullMeasureRest,unpitched:n.unpitched,grace:n.grace,chord:n.chord,type:n.type,dots:n.dots,onset:Number(n.onset),duration:Number(n.duration),transpose:n.transpose,ties:n.ties,ratio:n.ratio??null});
+const viewNote=(n:any)=>({id:n.id,partId:n.partId,index:n.index,measureIndex:n.measureIndex,measureNumber:n.measureNumber,staff:n.staff,voice:n.voice,pitch:n.pitch??null,rest:n.rest,fullMeasureRest:n.fullMeasureRest,unpitched:n.unpitched,playbackMidi:n.unpitched?percussionMidi(n):null,playbackArticulations:noteArticulations(n),grace:n.grace,chord:n.chord,type:n.type,dots:n.dots,onset:Number(n.onset),duration:Number(n.duration),transpose:n.transpose,ties:n.ties,ratio:n.ratio??null});
+function noteArticulations(n:any):string[] {
+  const notation=child(n.node,'notations'),container=notation&&child(notation,'articulations');
+  const articulations=container?container.children.map(a=>a.local):[];
+  const ornaments=notation&&child(notation,'ornaments');if(ornaments&&child(ornaments,'tremolo'))articulations.push('tremolo');
+  const technical=notation&&child(notation,'technical');if(technical&&child(technical,'snap-pizzicato'))articulations.push('pizzicato');
+  return articulations;
+}
+function percussionMidi(n:any) {
+  const list=child(doc.model.root,'part-list'),meta=list?children(list,'score-part').find(p=>p.attributes.id===n.partId):undefined;
+  const instrument=child(n.node,'instrument')?.attributes.id;
+  const midi=meta?children(meta,'midi-instrument').find(i=>!instrument||i.attributes.id===instrument):undefined;
+  const requested=Number(midi&&field(doc.model.source,midi,'midi-unpitched'))-1;
+  if(Number.isInteger(requested)&&requested>=0&&requested<128)return requested;
+  const name=doc.model.parts.find(p=>p.id===n.partId)?.name.toLowerCase()??'';
+  if(/bass.*drum|gran.*cassa/.test(name))return 36;
+  if(/cymbal|piatt/.test(name))return 49;
+  if(/triangle|triangol/.test(name))return 81;
+  if(/tambour/.test(name))return 54;
+  if(/tam.?tam|gong/.test(name))return 52;
+  return 38;
+}
 function keyboardPitch(id:string,letter:string,alter:number|null) {
   if(!['C','D','E','F','G','A','B'].includes(letter))throw new Error('Choose a note from A–G.');
   const n=doc.note(id),previous=doc.notes(0,doc.model.measures,n.partId).filter(p=>p.staff===n.staff&&p.voice===n.voice&&p.pitch&&(p.measureIndex<n.measureIndex||p.measureIndex===n.measureIndex&&p.index<n.index)).at(-1);
@@ -27,7 +48,7 @@ function parts(document=doc) {
     const meta=list?children(list,'score-part').find(n=>n.attributes.id===p.id):undefined;
     const midi=meta?child(meta,'midi-instrument'):undefined;
     const requested=midi?Number(field(source,midi,'midi-program'))-1:NaN;
-    return {id:p.id,name:p.name,staves:p.staves,program:Number.isInteger(requested)&&requested>=0&&requested<128?requested:instrumentProgram(p.name),percussion:midi?field(source,midi,'midi-channel')==='10':false};
+    return {id:p.id,name:p.name,staves:p.staves,program:Number.isInteger(requested)&&requested>=0&&requested<128?requested:instrumentProgram(p.name),percussion:(midi?field(source,midi,'midi-channel')==='10':false)||p.measures.some(m=>m.notes.some(n=>n.unpitched))};
   });
 }
 function state(ids:string[]=[],document=doc,summary=false) {
@@ -41,13 +62,16 @@ function playback() {
   const events:any[]=[];const open=new Map<string,any>();
   const dynamicValues=dynamicVelocities;
   const dynamicChanges:{partId:string;staff:number;beat:number;velocity:number}[]=[];
+  const techniqueChanges:{partId:string;staff:number;beat:number;technique:string}[]=[];
   for(const p of model.parts) for(const m of p.measures) {
-    for(const direction of children(m.node,'direction')) {const sound=child(direction,'sound');const following=m.notes.find(n=>n.node.start>direction.start);const beat=starts[m.index]+Number(following?.onset??0);const bpm=Number(sound?.attributes.tempo);if(bpm>0)tempos.push({beat,bpm});const dynamics=child(child(direction,'direction-type')??direction,'dynamics');const explicit=Number(sound?.attributes.dynamics);const velocity=explicit>0?Math.round(explicit*0.9):dynamics?dynamicValues[dynamics.children[0]?.local]:undefined;if(velocity)dynamicChanges.push({partId:p.id,staff:Number(field(model.source,direction,'staff','0')),beat,velocity});}
+    for(const direction of children(m.node,'direction')) {const sound=child(direction,'sound');const following=m.notes.find(n=>n.node.start>direction.start);const beat=starts[m.index]+Number(following?.onset??0);const bpm=Number(sound?.attributes.tempo);if(bpm>0)tempos.push({beat,bpm});const dynamics=child(child(direction,'direction-type')??direction,'dynamics');const explicit=Number(sound?.attributes.dynamics);const velocity=explicit>0?Math.round(explicit*0.9):dynamics?dynamicValues[dynamics.children[0]?.local]:undefined;if(velocity)dynamicChanges.push({partId:p.id,staff:Number(field(model.source,direction,'staff','0')),beat,velocity});const type=child(direction,'direction-type'),words=type?field(model.source,type,'words','').toLowerCase():'';if(/\bpizz(?:\.|icato)?\b/.test(words)||/\barco\b/.test(words))techniqueChanges.push({partId:p.id,staff:Number(field(model.source,direction,'staff','0')),beat,technique:/\barco\b/.test(words)?'arco':'pizzicato'});}
     for(const base of m.notes) {
-      const n=doc.note(base.id);if(!n.pitch||n.rest)continue;
-      const pitch=midiPitch(n.pitch)+n.transpose;if(pitch<0||pitch>127)continue;
+      const n=doc.note(base.id);if(n.rest||!n.pitch&&!n.unpitched)continue;
+      const pitch=n.pitch?midiPitch(n.pitch)+n.transpose:percussionMidi(n);if(pitch<0||pitch>127)continue;
       const beat=starts[m.index]+Number(n.onset),dynamic=dynamicChanges.filter(d=>d.partId===n.partId&&(d.staff===0||d.staff===n.staff)&&d.beat<=beat).at(-1);
-      const event={id:n.id,partId:n.partId,measureIndex:n.measureIndex,voice:n.voice,midi:pitch,beat,duration:n.grace?0.15:Number(n.duration),velocity:Math.min(127,Math.max(1,dynamic?.velocity??88)),grace:n.grace,segments:[{id:n.id,beat,duration:n.grace?0.15:Number(n.duration)}]};
+      const articulations=noteArticulations(n),technique=techniqueChanges.filter(d=>d.partId===n.partId&&(d.staff===0||d.staff===n.staff)&&d.beat<=beat).at(-1);
+      if(technique?.technique==='pizzicato')articulations.unshift('pizzicato');
+      const event={id:n.id,partId:n.partId,measureIndex:n.measureIndex,voice:n.voice,midi:pitch,beat,duration:n.grace?0.15:Number(n.duration),velocity:Math.min(127,Math.max(1,dynamic?.velocity??88)),grace:n.grace,articulations,segments:[{id:n.id,beat,duration:n.grace?0.15:Number(n.duration)}]};
       const key=`${n.partId}:${n.voice}:${pitch}`;
       if(n.ties.includes('stop')&&open.has(key)){const previous=open.get(key);previous.duration=event.beat+event.duration-previous.beat;previous.segments.push(...event.segments);if(!n.ties.includes('start'))open.delete(key);continue;}
       events.push(event);if(n.ties.includes('start'))open.set(key,event);

@@ -23,7 +23,7 @@ The target is comprehensive notation editing in the existing native, MusicXML-pr
 | Selection/properties | Native note/rest/bar hit targets; multi/range selection; grouped notation property list | Direct hit targets for every glyph; lasso, semantic filters, range selection across pages/voices |
 | Beams/stems/noteheads | Existing scalar fields exposed; ordinary duration edits remove impossible beams on the resized event | Coordinated automatic/manual rebeaming, cross-staff beams, complete creation palettes |
 | Layout | Shared pages/bar ranges, equal inter-instrument gaps, native zoom and scrolling | Professional spacing/layout modes, source-layout faithful view, pagination controls and print/export workflows |
-| Instruments/playback | Native sampler audition, sound choice, per-part mute/solo/volume/pan; bar seek and page following | Unpitched percussion editor/playback, full tablature fingering tools, detailed articulations/ornaments, repeat navigation |
+| Instruments/playback | Built-in and optional SINE audition, per-part sound choice/mute/solo/volume/pan; unpitched MIDI playback; common SINE articulation switches; bar seek and page following | Unpitched percussion entry/palettes, full tablature fingering tools, detailed legato/ornaments/expression, repeat navigation |
 | Documents | New compositions; UTF-8 uncompressed partwise XML; native safe Save/Save As and exact history | Compressed/timewise input, autosave/crash recovery, multiple independent documents, linked part extraction, MusicXML version/namespace compatibility breadth |
 
 ## How the new workflows behave

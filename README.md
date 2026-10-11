@@ -1,6 +1,6 @@
 # SourceScore
 
-A native macOS graphical MusicXML editor that keeps the original XML authoritative. Version 0.4.2 uses **SwiftUI and AppKit**, a white minimal interface and a native Core Graphics score canvas. It supports composition entry and a broader notation inspector. Launch `releases/SourceScore.app` directly; no command file, development server or account is needed.
+A native macOS graphical MusicXML editor that keeps the original XML authoritative. Version 0.5.0 uses **SwiftUI and AppKit**, a white minimal interface and a native Core Graphics score canvas. It supports composition entry, a broader notation inspector and optional SINE instrument playback. Launch `releases/SourceScore.app` directly; no command file or development server is needed. Built-in playback works without an account; Berlin Free Orchestra requires its free Orchestral Tools licence and installed samples.
 
 The Swift frontend is in `native/Sources/SourceScore`; the preserving MusicXML engine is in `src/core`. The app is a build of these sources. Full MuseScore/Dorico editing parity is an ongoing target, **not a completed claim**. See [the capability matrix and remaining work](docs/FULL_EDITOR.md).
 
@@ -45,9 +45,9 @@ Enter a bar in **From bar**, then Play or press Space; Return in the bar field s
 
 The **Mixer** button (or F10) opens compact instrument channels with Mute, Solo, volume, pan and sound selection. Multiple Solo buttons can isolate a combination of instruments. Controls apply live without restarting playback; mix settings do not change MusicXML. The note inspector's **Play this instrument** button solos that instrument and starts at the selected bar. These controls follow [MuseScore's mixer pattern](https://handbook.musescore.org/sound-and-playback/mixer).
 
-Selected and edited notes can be auditioned immediately. AVAudioEngine and separate AVAudioUnitSampler/mixer nodes use the macOS General MIDI DLS sound bank for different instruments. XML MIDI programs are respected; instrument names supply fallback programs. Sound choices affect audition without altering MusicXML.
+Selected and edited notes can be auditioned immediately. AVAudioEngine hosts a separate instrument and mixer for each part. With the optional Berlin setup installed, the mixer automatically assigns available Berlin sounds and provides an **Instrument settings…** button for the embedded SINE editor. Other instruments, including piano, use the built-in macOS General MIDI bank or a chosen SF2/DLS bank. Sound selections and presets are local preferences; they do not alter MusicXML. See [the library setup and playback boundary](docs/AUDIO_LIBRARY.md).
 
-Tempo changes, transposition, voice/chord timing and basic sounding ties are interpreted. The tempo field controls speed; additional SF2/DLS banks can be selected. This is MIDI audition, not a sampled-orchestra performance or a complete articulation/ornament realization. Unpitched percussion and exceptional performance conventions need broader qualification.
+Tempo changes, transposition, voice/chord timing and basic sounding ties are interpreted. Unpitched notes use MusicXML's MIDI percussion mapping. Supported SINE presets select sustained/short, pizzicato and tremolo sounds when available; detached notes also receive shorter gates. Detailed legato, hairpin expression, ornament realization and repeat navigation remain incomplete.
 
 ## Preservation
 

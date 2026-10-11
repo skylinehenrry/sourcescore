@@ -1,6 +1,6 @@
 {
   "name": "sourcescore",
-  "version": "0.4.2",
+  "version": "0.5.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -15,6 +15,7 @@
     "desktop:build": "node scripts/native-build.mjs",
     "desktop:test": "node scripts/native-test.mjs",
     "desktop:lifecycle:test": "node scripts/native-lifecycle-test.mjs",
+    "desktop:sine:test": "node scripts/native-sine-test.mjs",
     "tauri": "tauri",
     "legacy:desktop:build": "node scripts/desktop.mjs build --bundles app",
     "legacy:desktop:test": "node scripts/desktop.mjs test",

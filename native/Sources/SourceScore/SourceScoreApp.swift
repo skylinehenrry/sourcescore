@@ -29,9 +29,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     Task { await model.open(URL(fileURLWithPath: filename)) }
   }
   func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-    guard let model, model.hasChangesToProtect else { return .terminateNow }
+    guard let model, model.hasChangesToProtect || model.hasInstrumentSettings else { return .terminateNow }
     Task {
-      let accepted = await model.allowReplace()
+      var accepted = await model.allowReplace()
+      if accepted { accepted = await model.finishInstrumentSettings() }
       NSApp.reply(toApplicationShouldTerminate: accepted)
     }
     return .terminateLater
@@ -124,6 +125,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         Toggle("Mixer", isOn: $model.mixerVisible).keyboardShortcut(
           KeyEquivalent(Character(UnicodeScalar(NSF10FunctionKey)!)), modifiers: [])
         Button("Choose SoundFont…", action: model.soundBank)
+        Toggle("Use Berlin Free Orchestra", isOn: Binding(get: { model.berlinEnabled }, set: model.useBerlin))
+          .disabled(model.soundLibrary.patches.isEmpty)
+        Button("Refresh Installed Sounds", action: model.refreshSounds)
+        Button("Import SINE Preset…", action: model.importSinePreset)
       }
     }
   }
@@ -265,7 +270,8 @@ struct EditorWindow: View {
           Button(action: model.togglePlayback) {
             Image(systemName: model.playing || model.preparingPlayback ? "stop.fill" : "play.fill")
           }.disabled(model.summary == nil).help(
-            model.playing ? "Stop playback" : "Play from selected bar")
+            model.playing || model.preparingPlayback ? "Stop playback" : "Play from selected bar")
+          if model.preparingPlayback { ProgressView().controlSize(.small).help("Loading instrument sounds") }
           Text("From bar").font(.caption).foregroundStyle(.secondary)
           TextField("Bar", text: Binding(get: { model.playbackBar }, set: model.setPlaybackBar))
             .frame(width: 45).accessibilityLabel("Play from bar").onSubmit(model.playFromBar)
@@ -350,6 +356,7 @@ struct InstrumentMixer: View {
     VStack(spacing: 8) {
       HStack {
         Text("Mixer").font(.headline)
+        if model.berlinEnabled { Text("Berlin Free Orchestra").font(.caption).foregroundStyle(.secondary) }
         Spacer()
         Button("Reset", action: model.resetMix).buttonStyle(.plain).font(.caption)
         Button {
@@ -368,11 +375,27 @@ struct InstrumentMixer: View {
               Picker(
                 "Sound",
                 selection: Binding(
-                  get: { model.programOverrides[part.id] ?? part.program },
-                  set: { model.setProgram(part.id, $0) })
+                  get: { model.soundChoice(part) },
+                  set: { model.selectSound(part, $0) })
               ) {
-                ForEach(EditorWindow.sounds, id: \.0) { Text($0.1).tag($0.0) }
+                if !model.soundLibrary.patches.isEmpty {
+                  Section("Berlin Free Orchestra") {
+                    ForEach(model.soundLibrary.patches) { Text($0.name).tag($0.id) }
+                  }
+                }
+                Section("Built-in sounds") {
+                  ForEach(EditorWindow.sounds, id: \.0) { Text($0.1).tag("apple:\($0.0)") }
+                  if !EditorWindow.sounds.contains(where: { $0.0 == part.program }) {
+                    Text("Original sound").tag("apple:\(part.program)")
+                  }
+                }
               }.labelsHidden().controlSize(.small).accessibilityLabel("Sound for \(part.name)")
+              if model.chosenPatch(part) != nil {
+                Button("Instrument settings…") { model.instrumentSettings(part) }
+                  .buttonStyle(.plain).font(.caption2)
+              } else {
+                Text("Built-in sound").font(.caption2).foregroundStyle(.secondary)
+              }
               HStack {
                 Toggle("M", isOn: binding(part.id, \.mute)).toggleStyle(.button).help(
                   "Mute \(part.name)"
@@ -387,12 +410,12 @@ struct InstrumentMixer: View {
                 .monospacedDigit().foregroundStyle(.secondary)
               Slider(value: binding(part.id, \.pan), in: -1...1).accessibilityLabel(
                 "Pan for \(part.name)")
-            }.padding(.horizontal, 14).padding(.bottom, 12).frame(width: 152)
+            }.padding(.horizontal, 14).padding(.bottom, 12).frame(width: 210)
             Divider()
           }
         }.padding(.horizontal, 6)
       }
-    }.background(.white).frame(maxHeight: 220)
+    }.background(.white).frame(maxHeight: 245)
   }
   private func binding<T>(_ id: String, _ path: WritableKeyPath<InstrumentMix, T>) -> Binding<T> {
     Binding(

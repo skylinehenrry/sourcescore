@@ -1,6 +1,14 @@
-# Swift native editor — 0.4.1
+# Swift native editor — 0.5.0
 
 The entry point is a SwiftUI App with native commands, dialogs, a white minimal interface and an AppKit vector canvas. The old command launcher was removed. Command+Left/Right flips shared pages; Up/Down moves by a semitone and Shift adds octave movement. Note entry and grouped Notes/Notation/Bar tools now support broader composition editing. The full capability boundary is in [FULL_EDITOR.md](FULL_EDITOR.md).
+
+## 0.5 SINE playback and local validation
+
+- A separate SINE Audio Unit and mixer can render each part from a complete local preset, alongside built-in sounds. Instrument-name/program matching and per-part choices select sounds; XML remains authoritative and unchanged by sound settings.
+- The embedded SINE window opens from the native Mixer. Closing it saves its full state outside MusicXML. App termination waits for pending sound-setting saves. Score titles target the score window rather than a plugin window.
+- Native bridge checks cover MIDI-unpitched playback/audition, articulation extraction, exact source preservation and rejection of incomplete SINE states before plugin instantiation. The native build and TypeScript build pass.
+- In an isolated copy of the compiled frontend, Berlin violin solo playback advanced automatically to page three. Starting at bar five opened page two. The SINE settings window opened and saved on close. A selected F-sharp4 changed to G4 and returned with Undo; score-focused Command page shortcuts worked. Measured edit times in this check were 94–96 ms; these are individual measurements.
+- The optional `desktop:sine:test` command renders every configured local preset through the installed plugin, and checks muted/non-solo output as silence. Its results depend on which samples and presets are installed; installation-specific totals are recorded in the local release handoff.
 
 ## 0.4.1 native follow-up and executed GUI checks
 
@@ -73,9 +81,9 @@ Swift parses the result into Core Graphics paths, transforms, text and note iden
 
 ## Audio
 
-AVAudioEngine hosts one AVAudioUnitSampler per part. The built-in macOS General MIDI DLS bank supplies instrument sounds and is referenced from the OS, not redistributed. SF2/DLS alternatives are supported. XML programs and instrument-name fallback mappings choose sounds. Source transpose, voice/chord timing, basic ties, tempo changes and approximate dynamic velocities drive playback.
+AVAudioEngine hosts one MIDI instrument and mixer per part. Built-in sounds use AVAudioUnitSampler and the macOS General MIDI DLS bank, referenced from the OS rather than redistributed. Optional Berlin sounds use the installed SINE Audio Unit and local AU presets. SF2/DLS alternatives remain supported. Source transpose, voice/chord timing, basic ties, tempo changes, approximate dynamic velocities and unpitched MIDI mappings drive playback. SINE settings remain outside source MusicXML. [AUDIO_LIBRARY.md](AUDIO_LIBRARY.md) describes setup and supported articulation routing.
 
-An offline audio check renders piano and flute samples and asserts non-silence and different waveforms. Detailed articulation, ornaments, expression, microtones, unpitched percussion and exceptional conventions remain approximate or unsupported.
+The offline audio checks render actual instruments and assert non-silence and silent muted/excluded channels. The optional SINE check renders every configured preset through the installed plugin. Detailed legato, ornaments, continuous expression, microtones and exceptional conventions remain approximate or unsupported.
 
 ## 0.2 validation baseline (historical)
 

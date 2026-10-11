@@ -35,6 +35,8 @@ struct Note: Codable, Identifiable {
   var rest: Bool
   var fullMeasureRest: Bool?
   var unpitched: Bool
+  var playbackMidi: Int? = nil
+  var playbackArticulations: [String]? = nil
   var grace: Bool
   var chord: Bool
   var type: String
@@ -135,6 +137,7 @@ struct PlaybackEvent: Codable {
   var velocity: Int
   var grace: Bool
   var segments: [PlaybackSegment]?
+  var articulations: [String]?
 }
 struct PlaybackSegment: Codable {
   var id: String

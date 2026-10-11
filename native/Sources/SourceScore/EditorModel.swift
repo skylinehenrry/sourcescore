@@ -32,6 +32,13 @@ import UniformTypeIdentifiers
   @Published var measureInput = ""
   @Published var lastEditMilliseconds: Double = 0
   @Published var programOverrides: [String: Int] = [:]
+  @Published var soundLibrary = SoundLibrary()
+  @Published var soundChoices: [String: String] = [:]
+  @Published var berlinEnabled = false
+  private var instrumentEditors: [String: InstrumentEditor] = [:]
+  private var preparingInstrumentEditors: Set<String> = []
+  private var soundSaveTail: Task<Bool, Never>?
+  var hasInstrumentSettings: Bool { !instrumentEditors.isEmpty || soundSaveTail != nil }
   @Published var noteInput = false
   @Published var inputType = "quarter"
   @Published var inputDots = 0
@@ -71,6 +78,8 @@ import UniformTypeIdentifiers
   var pageCount: Int { max(1, ((summary?.measureCount ?? 0) + barsPerPage - 1) / barsPerPage) }
   var displayName: String { file?.url.lastPathComponent ?? summary?.title ?? "SourceScore" }
   init() {
+    berlinEnabled = UserDefaults.standard.object(forKey: "useBerlinFreeOrchestra") as? Bool
+      ?? !soundLibrary.patches.isEmpty
     audio.outputError = { [weak self] message in DispatchQueue.main.async { self?.error = message }
     }
     checkTimer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in
@@ -149,6 +158,13 @@ import UniformTypeIdentifiers
     partId = nil
     programOverrides = [:]
     mix = Dictionary(uniqueKeysWithValues: result.parts.map { ($0.id, InstrumentMix()) })
+    for editor in Array(instrumentEditors.values) { editor.close() }
+    soundChoices = reference.flatMap { UserDefaults.standard.dictionary(forKey: "soundAssignments")?[$0.url.path] as? [String: String] } ?? [:]
+    for (id, choice) in soundChoices where choice.hasPrefix("apple:") {
+      if let program = Int(choice.dropFirst(6)) { programOverrides[id] = program }
+    }
+    audio.resetSounds()
+    applySounds()
     audio.setMix(mix)
     playbackBar = result.measureLabels.first ?? "1"
     chosenPlaybackMeasure = 0
@@ -526,6 +542,7 @@ import UniformTypeIdentifiers
       }
       let result = try await files.save(source, to: target!)
       file = result.reference
+      rememberSounds()
       needsInitialSave = false
       let state = try await core.decode(EditState.self, "mark-saved")
       dirty = state.dirty
@@ -568,6 +585,126 @@ import UniformTypeIdentifiers
     programOverrides[id] = program
     if let part = effectivePart(id) { audio.changeSound(part) }
   }
+  func chosenPatch(_ part: Part) -> SoundPatch? {
+    if let choice = soundChoices[part.id] {
+      return soundLibrary.patches.first { $0.id == choice }
+    }
+    return berlinEnabled ? soundLibrary.match(effectivePart(part.id) ?? part) : nil
+  }
+  func soundChoice(_ part: Part) -> String {
+    chosenPatch(part)?.id ?? "apple:\(programOverrides[part.id] ?? part.program)"
+  }
+  func selectSound(_ part: Part, _ choice: String) {
+    stop()
+    instrumentEditors[part.id]?.close()
+    soundChoices[part.id] = choice
+    if choice.hasPrefix("apple:"), let program = Int(choice.dropFirst(6)) {
+      programOverrides[part.id] = program
+    }
+    applySounds()
+    rememberSounds()
+    if let effective = effectivePart(part.id) { audio.changeSound(effective) }
+  }
+  func applySounds() {
+    var values: [String: (SoundPatch, URL)] = [:]
+    for part in summary?.parts ?? [] {
+      if let patch = chosenPatch(part) { values[part.id] = (patch, soundLibrary.preset(patch)) }
+    }
+    audio.setSounds(values)
+  }
+  func useBerlin(_ enabled: Bool) {
+    stop()
+    for editor in Array(instrumentEditors.values) { editor.close() }
+    berlinEnabled = enabled
+    UserDefaults.standard.set(enabled, forKey: "useBerlinFreeOrchestra")
+    soundChoices = [:]
+    rememberSounds()
+    applySounds()
+  }
+  func refreshSounds() {
+    soundLibrary = SoundLibrary()
+    if soundLibrary.patches.isEmpty {
+      status = "Berlin sounds are not configured yet. Complete the local sound setup first."
+    } else {
+      useBerlin(true)
+      status = "Berlin Free Orchestra · \(soundLibrary.patches.count) sounds ready"
+    }
+  }
+  func importSinePreset() {
+    let panel = NSOpenPanel()
+    panel.canChooseDirectories = false
+    panel.allowsMultipleSelection = false
+    panel.message = "Choose an instrument preset saved from SINE Player."
+    if panel.runModal() != .OK { return }
+    guard let url = panel.url else { return }
+    do {
+      let state = try SoundLibrary.readPreset(url)
+      let alert = NSAlert()
+      alert.messageText = "Name this instrument sound"
+      let name = NSTextField(string: url.deletingPathExtension().lastPathComponent)
+      name.frame = NSRect(x: 0, y: 0, width: 300, height: 24)
+      alert.accessoryView = name
+      alert.addButton(withTitle: "Add Sound")
+      alert.addButton(withTitle: "Cancel")
+      guard alert.runModal() == .alertFirstButtonReturn else { return }
+      let title = name.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+      guard !title.isEmpty else { throw EditorError.message("Enter a name for the instrument sound.") }
+      let part = summary?.parts.first { $0.id == primary?.partId }
+      let patch = try soundLibrary.adding(state, name: title, part: part)
+      soundLibrary = SoundLibrary()
+      if let part { selectSound(part, patch.id) }
+      status = "\(title) is available in the mixer"
+    } catch { self.error = errorMessage(error) }
+  }
+  func instrumentSettings(_ part: Part) {
+    guard let patch = chosenPatch(part), let effective = effectivePart(part.id) else { return }
+    if let editor = instrumentEditors[part.id] { editor.show(); return }
+    guard preparingInstrumentEditors.insert(part.id).inserted else { return }
+    stop()
+    let requestedGeneration = generation
+    let preset = soundLibrary.preset(patch)
+    Task { [self] in
+      defer { preparingInstrumentEditors.remove(part.id) }
+      do {
+        let unit = try await audio.editorInstrument(effective)
+        let controller = await withCheckedContinuation { continuation in
+          unit.auAudioUnit.requestViewController { continuation.resume(returning: $0) }
+        }
+        guard let controller else { throw EditorError.message("SINE could not open its instrument settings.") }
+        guard generation == requestedGeneration, chosenPatch(part)?.id == patch.id else { return }
+        let editor = InstrumentEditor(controller: controller, name: part.name) { [weak self] in
+          guard let self else { return }
+          self.instrumentEditors.removeValue(forKey: part.id)
+          let previousSave = self.soundSaveTail
+          self.soundSaveTail = Task {
+            let previousSucceeded = await previousSave?.value ?? true
+            do {
+              try await self.audio.savePreset(unit, to: preset)
+              self.status = "Instrument settings saved for \(patch.name)"
+              return previousSucceeded
+            } catch {
+              self.error = self.errorMessage(error)
+              return false
+            }
+          }
+        }
+        instrumentEditors[part.id] = editor
+        editor.show()
+      } catch { self.error = errorMessage(error) }
+    }
+  }
+  func finishInstrumentSettings() async -> Bool {
+    for editor in Array(instrumentEditors.values) { editor.close() }
+    let success = await soundSaveTail?.value ?? true
+    soundSaveTail = nil
+    return success
+  }
+  private func rememberSounds() {
+    guard let path = file?.url.path else { return }
+    var values = UserDefaults.standard.dictionary(forKey: "soundAssignments") ?? [:]
+    values[path] = soundChoices
+    UserDefaults.standard.set(values, forKey: "soundAssignments")
+  }
   func soloOnly(_ id: String) {
     for key in mix.keys {
       mix[key]?.solo = key == id
@@ -597,7 +734,7 @@ import UniformTypeIdentifiers
     stop()
     let token = playbackGeneration
     preparingPlayback = true
-    Task {
+    Task { [self] in
       await editTail?.value
       do {
         var arrangement = try await core.decode(Playback.self, "playback")
@@ -607,8 +744,6 @@ import UniformTypeIdentifiers
           throw EditorError.message("That bar is not available for playback.")
         }
         let timeline = PlaybackTimeline(starts: arrangement.measureBeats)
-        preparingPlayback = false
-        playing = true
         playbackMeasure = start
         if followPlayback && page != start / barsPerPage {
           page = start / barsPerPage
@@ -619,6 +754,13 @@ import UniformTypeIdentifiers
           arrangement,
           startBeat: arrangement.measureBeats[start],
           bpm: bpm,
+          ready: { [weak self] in
+            DispatchQueue.main.async {
+              guard let self, token == self.playbackGeneration else { return }
+              self.preparingPlayback = false
+              self.playing = true
+            }
+          },
           progress: { [weak self] beat, ids in
             DispatchQueue.main.async {
               guard let self, token == self.playbackGeneration, self.playing else { return }
@@ -636,6 +778,7 @@ import UniformTypeIdentifiers
             DispatchQueue.main.async {
               guard let self, token == self.playbackGeneration else { return }
               self.playing = false
+              self.preparingPlayback = false
               self.activeNotes = []
               self.playbackMeasure = nil
             }
@@ -667,12 +810,14 @@ import UniformTypeIdentifiers
         audio.bank = url
         audio.programs.removeAll()
       }
+      audio.invalidateBuiltInSounds()
       status = "Sound bank: \(url.lastPathComponent)"
     }
   }
   func updateTitle() {
-    NSApp.windows.first?.title = displayName + (dirty ? " • Edited" : "")
-    NSApp.windows.first?.isDocumentEdited = dirty
+    let window = NSApp.windows.first { $0.delegate is AppDelegate }
+    window?.title = displayName + (dirty ? " • Edited" : "")
+    window?.isDocumentEdited = dirty
   }
   private func errorMessage(_ error: Error) -> String {
     (error as? LocalizedError)?.errorDescription ?? error.localizedDescription

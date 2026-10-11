@@ -52,6 +52,23 @@ import Foundation
       abs(clock.seconds(at: 8) - 6) < 0.001 && abs(clock.beat(at: 6) - 8) < 0.001,
       "Source tempo changes")
     print("PASS Source tempo changes and clock conversion")
+    let percussionSource = "<score-partwise><part-list><score-part id='P1'><part-name>Snare drum</part-name><midi-instrument id='snare'><midi-channel>10</midi-channel><midi-unpitched>39</midi-unpitched></midi-instrument></score-part></part-list><part id='P1'><measure number='1'><attributes><divisions>1</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes><note><unpitched><display-step>C</display-step><display-octave>5</display-octave></unpitched><duration>1</duration><instrument id='snare'/><type>quarter</type><notations><articulations><staccato/></articulations></notations></note><note><rest/><duration>3</duration><type>half</type><dot/></note></measure></part></score-partwise>"
+    _ = try await engine.call("open", ["source": percussionSource])
+    let percussionPlayback = try await engine.decode(Playback.self, "playback")
+    let percussionNote = try await engine.decode(Note.self, "note", ["id": "0:0:0"])
+    let preservedPercussion = try await engine.decode(String.self, "source")
+    try check(percussionPlayback.events.count == 1 && percussionPlayback.events[0].midi == 38
+      && percussionPlayback.events[0].articulations == ["staccato"]
+      && percussionNote.playbackMidi == 38 && preservedPercussion == percussionSource,
+      "Percussion MIDI/articulation extraction changed the source or omitted a note")
+    print("PASS Unpitched percussion playback/audition MIDI, articulation routing and unchanged XML")
+    let invalidPreset = directory.appendingPathComponent("incomplete.otsave")
+    let invalidState: [String: Any] = ["fileFormatVersion": "1.0", "renderer": [:], "instruments": [["id": "5071"]]]
+    try JSONSerialization.data(withJSONObject: invalidState).write(to: invalidPreset)
+    var invalidPresetBlocked = false
+    do { _ = try SoundLibrary.readPreset(invalidPreset) } catch { invalidPresetBlocked = true }
+    try check(invalidPresetBlocked, "An incomplete SINE state reached the native plugin")
+    print("PASS Incomplete SINE presets rejected before plugin instantiation")
     let timeline = PlaybackTimeline(starts: [0, 3, 6, 10, 14, 17])
     try check(
       timeline.measure(at: 9.99) == 2 && timeline.measure(at: 10) == 3
