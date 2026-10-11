@@ -11,7 +11,7 @@
     "test:ui": "playwright test",
     "bench": "tsx scripts/benchmark.ts",
     "compare": "tsx scripts/compare.ts",
-    "desktop:dev": "node scripts/native-build.mjs && open releases/SourceScore.app",
+    "desktop:dev": "node scripts/native-build.mjs && open SourceScore.app",
     "desktop:build": "node scripts/native-build.mjs",
     "desktop:test": "node scripts/native-test.mjs",
     "desktop:lifecycle:test": "node scripts/native-lifecycle-test.mjs",

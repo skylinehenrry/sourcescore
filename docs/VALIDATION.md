@@ -58,6 +58,6 @@ See `benchmark-results.json` for the most recent single local run. Those measure
 
 ## Recoverable checkpoints and continuation
 
-The source, lockfiles, brief, regression fixture and architecture were saved in Git. The packaged app is kept in `releases/SourceScore.app`. Private fixtures, scratch reader exports, screenshots, toolchains and compiled build directories are ignored by Git. No separate accompaniment files were edited.
+The source, lockfiles, brief, regression fixture and architecture were saved in Git. The packaged app is kept in `SourceScore.app`. Private fixtures, scratch reader exports, screenshots, toolchains and compiled build directories are ignored by Git. No separate accompaniment files were edited.
 
 Prioritize complete real concerto regression fixtures, coordinated rest/tie/beam/tuplet operations, incremental semantic updates and page/system caching. Add repeatable native lifecycle coverage for Finder events, drag/drop and persistence interactions across OS versions. Follow the preservation and normalized-event assertions whenever adding an editing capability.

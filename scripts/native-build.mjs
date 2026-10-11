@@ -11,7 +11,7 @@ await build({entryPoints:[path.join(root,'native/render-entry.ts')],bundle:true,
 cpSync(path.join(root,'fixtures/orchestral-study.musicxml'),path.join(root,'native/Resources/example.musicxml'));
 run('swift',['build','--package-path','native','-c','release']);
 const bin=spawnSync('swift',['build','--package-path','native','-c','release','--show-bin-path'],{cwd:root,encoding:'utf8'}).stdout.trim();
-const app=path.join(root,'releases/SourceScore.app');rmSync(app,{recursive:true,force:true});mkdirSync(path.join(app,'Contents/MacOS'),{recursive:true});mkdirSync(path.join(app,'Contents/Resources'),{recursive:true});
+const app=path.join(root,'SourceScore.app');rmSync(app,{recursive:true,force:true});mkdirSync(path.join(app,'Contents/MacOS'),{recursive:true});mkdirSync(path.join(app,'Contents/Resources'),{recursive:true});
 cpSync(path.join(bin,'SourceScore'),path.join(app,'Contents/MacOS/SourceScore'));
 cpSync(path.join(bin,'SourceScore_SourceScore.bundle'),path.join(app,'Contents/Resources/SourceScore_SourceScore.bundle'),{recursive:true});
 cpSync(path.join(root,'src-tauri/icons/icon.icns'),path.join(app,'Contents/Resources/AppIcon.icns'));

@@ -1,6 +1,6 @@
 # SourceScore
 
-A native macOS graphical MusicXML editor that keeps the original XML authoritative. Version 0.5.0 uses **SwiftUI and AppKit**, a white minimal interface and a native Core Graphics score canvas. It supports composition entry, a broader notation inspector and optional SINE instrument playback. Launch `releases/SourceScore.app` directly; no command file or development server is needed. Built-in playback works without an account; Berlin Free Orchestra requires its free Orchestral Tools licence and installed samples.
+A native macOS graphical MusicXML editor that keeps the original XML authoritative. Version 0.5.0 uses **SwiftUI and AppKit**, a white minimal interface and a native Core Graphics score canvas. It supports composition entry, a broader notation inspector and optional SINE instrument playback. Launch `SourceScore.app` directly; no command file or development server is needed. Built-in playback works without an account; Berlin Free Orchestra requires its free Orchestral Tools licence and installed samples.
 
 The Swift frontend is in `native/Sources/SourceScore`; the preserving MusicXML engine is in `src/core`. The app is a build of these sources. Full MuseScore/Dorico editing parity is an ongoing target, **not a completed claim**. See [the capability matrix and remaining work](docs/FULL_EDITOR.md).
 
@@ -13,7 +13,7 @@ npm ci
 npm run desktop:build
 ```
 
-The result is `releases/SourceScore.app`. `npm run desktop:dev` builds and opens it. The bundle is locally ad hoc signed; public distribution notarization is not configured.
+The result is `SourceScore.app`. `npm run desktop:dev` builds and opens it. The bundle is locally ad hoc signed; public distribution notarization is not configured.
 
 ## Use
 

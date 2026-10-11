@@ -12,6 +12,6 @@ Comprehensive MuseScore/Dorico editing parity is not complete. [FULL_EDITOR.md](
 
 ## Build and verify
 
-`npm run desktop:dev` builds and opens the native app. `npm run desktop:build` refreshes `releases/SourceScore.app`. `npm test`, `npm run desktop:test` and `npm run desktop:render:test` cover source semantics, native integration/persistence/audio and engraving. `npm run test:editing-schema -- /path/to/musicxml.xsd` checks generated workflow output against a local official MusicXML 4.0 schema.
+`npm run desktop:dev` builds and opens the native app. `npm run desktop:build` refreshes `SourceScore.app`. `npm test`, `npm run desktop:test` and `npm run desktop:render:test` cover source semantics, native integration/persistence/audio and engraving. `npm run test:editing-schema -- /path/to/musicxml.xsd` checks generated workflow output against a local official MusicXML 4.0 schema.
 
 The retained React/Tauri implementations and their browser/Rust results are historical; they do not substitute for native Swift feature testing. See [SWIFT_NATIVE.md](SWIFT_NATIVE.md) for current and historical validation, and [VALIDATION.md](VALIDATION.md) for the initial 0.1 evidence.
