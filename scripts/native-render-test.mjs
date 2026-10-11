@@ -43,4 +43,23 @@ try {
   assert.equal(composition.mapped,composition.sourceCount,'New notes lost engraving identity');
   assert.equal(composition.bars,12,'New composition staff/bar areas');assert(composition.intact,'New composition engraving changed source');
   console.log('PASS Native new composition engraving: note/chord entry, tuplets, lyrics, articulation and dynamic targets');
+  const resized=await page.evaluate(async()=>{
+    const widths=[900,1800,2600,1100];
+    function call(method,args={}){const r=JSON.parse(window.SourceScoreCore.call(method,args));if(!r.ok)throw new Error(r.error);return r.value;}
+    const source=call('source'),payload=call('page',{start:0,count:4});
+    const results=[];
+    for(const width of widths){
+      const scene=await window.renderNativeScore({...payload,width,height:1100});
+      results.push({requested:width,width:scene.width,right:Math.max(...scene.bars.map(b=>b.left+b.width)),mapped:scene.mappedCount,count:scene.sourceCount,bars:scene.bars.length});
+    }
+    return {results,intact:source===call('source')};
+  });
+  assert(resized.intact,'Window resizing changed MusicXML');
+  for(const scene of resized.results){
+    assert(Math.abs(scene.width-scene.requested)<1,'Engraving ignored the score viewport width');
+    assert(scene.right>scene.requested*0.85,'Measures left a large unused area on the right');
+    assert.equal(scene.mapped,scene.count,'Resizing lost editable note identities');
+    assert.equal(scene.bars,12,'Resizing lost editable staff/bar areas');
+  }
+  console.log('PASS Score fills narrow/wide/resized viewports with intact note/bar editing identities and unchanged XML');
 } finally {await browser.close();}

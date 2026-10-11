@@ -18,6 +18,14 @@ The corrected compiled frontend was tested in an isolated copy with a separate t
 
 These are executed local checks. Full professional editing parity remains bounded by [FULL_EDITOR.md](FULL_EDITOR.md).
 
+## 0.4.2 startup and window layout
+
+- App copies share an exclusive process lock and activate the running editor instead of creating another app session. Launch Services also prohibits multiple instances. The native lifecycle check exercises eight simultaneous launches from two executable paths, followed by crash recovery and normal relaunch.
+- Engraving uses the actual score viewport width and height, accounting for zoom. The native canvas expands to the space left by optional panels. Window and panel changes refresh the presentation without modifying source MusicXML.
+- Native engraving passed at widths of 900, 1800, 2600 and 1100, with notes and staff/bar hit targets intact, measures spanning the available width, and unchanged authoritative XML.
+- The compiled Swift frontend was checked in an isolated app copy. Maximizing the window and toggling the inspector reflowed the score across the available width and height. Selecting a note, moving it one semitone and undoing worked after resizing. Launching another copy left exactly one editor process running. Only the test copies' bundle identity/document-registration metadata differed from the production app.
+- Run `npm run desktop:lifecycle:test` for the process-lock regression and `npm run desktop:render:test` for engraving and responsive-width checks.
+
 ## 0.4 changes and validation
 
 - New native composition setup; A–G/R entry, automatic cursor advance, rest splitting, chords, grace notes, values/dots, individual/event deletion and compensating duration edits.

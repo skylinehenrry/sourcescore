@@ -1,8 +1,33 @@
 import AppKit
+import Darwin
 import SwiftUI
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
   weak var model: EditorModel?
+  private var reopenObserver: NSObjectProtocol?
+  private var pendingFiles: [String] = []
+  func applicationDidFinishLaunching(_ notification: Notification) {
+    reopenObserver = DistributedNotificationCenter.default().addObserver(
+      forName: ApplicationInstance.reopenNotification, object: nil, queue: .main
+    ) { [weak self] notification in
+      Task { @MainActor in
+        NSApp.activate(ignoringOtherApps: true)
+        NSApp.windows.first(where: { $0.canBecomeMain })?.makeKeyAndOrderFront(nil)
+        if let files = notification.userInfo?["files"] as? [String] { self?.open(files) }
+      }
+    }
+  }
+  func attach(_ model: EditorModel) {
+    self.model = model
+    let files = pendingFiles
+    pendingFiles = []
+    open(files)
+  }
+  private func open(_ files: [String]) {
+    guard let filename = files.first else { return }
+    guard let model else { pendingFiles = files; return }
+    Task { await model.open(URL(fileURLWithPath: filename)) }
+  }
   func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
     guard let model, model.hasChangesToProtect else { return .terminateNow }
     Task {
@@ -12,7 +37,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     return .terminateLater
   }
   func application(_ sender: NSApplication, openFiles filenames: [String]) {
-    if let filename = filenames.first { Task { await model?.open(URL(fileURLWithPath: filename)) } }
+    open(filenames)
     sender.reply(toOpenOrPrint: .success)
   }
   func windowShouldClose(_ sender: NSWindow) -> Bool {
@@ -33,13 +58,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 }
 @main struct SourceScoreApp: App {
   @NSApplicationDelegateAdaptor(AppDelegate.self) var delegate
-  @StateObject var model = EditorModel()
+  @StateObject var model: EditorModel
+  init() {
+    do {
+      guard try ApplicationInstance.shared.acquireOrActivateExisting() else { Darwin.exit(0) }
+    } catch {
+      let alert = NSAlert()
+      alert.messageText = "SourceScore could not start"
+      alert.informativeText = "Could not reserve the app session: \(error.localizedDescription)"
+      alert.runModal()
+      Darwin.exit(1)
+    }
+    _model = StateObject(wrappedValue: EditorModel())
+  }
   var body: some Scene {
     WindowGroup {
       EditorWindow(model: model).frame(minWidth: 1000, minHeight: 680).preferredColorScheme(.light)
         .tint(.black)
         .onAppear {
-          delegate.model = model
+          delegate.attach(model)
           DispatchQueue.main.async { NSApp.windows.first?.delegate = delegate }
           if let path = CommandLine.arguments.dropFirst().first(where: {
             $0.lowercased().hasSuffix(".musicxml") || $0.lowercased().hasSuffix(".xml")
@@ -144,7 +181,7 @@ struct EditorWindow: View {
           Divider()
         }
         if model.summary != nil {
-          ScoreCanvas(model: model).overlay(alignment: .topTrailing) {
+          ScoreCanvas(model: model).frame(maxWidth: .infinity, maxHeight: .infinity).overlay(alignment: .topTrailing) {
             if model.rendering { ProgressView().controlSize(.small).padding(12) }
           }
         } else {

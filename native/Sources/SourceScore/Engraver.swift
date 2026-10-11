@@ -24,9 +24,11 @@ import WebKit
     waiters = []
     pending.forEach { $0.resume() }
   }
-  func render(_ payload: Data, height: Double) async throws -> (VectorScene, [Note]) {
+  func render(_ payload: Data, width: Double, height: Double) async throws -> (VectorScene, [Note]) {
     if !ready { await withCheckedContinuation { waiters.append($0) } }
     var object = try JSONSerialization.jsonObject(with: payload) as! [String: Any]
+    webView.setFrameSize(CGSize(width: width, height: max(2400, height)))
+    object["width"] = width
     object["height"] = height
     let result =
       try await webView.callAsyncJavaScript(

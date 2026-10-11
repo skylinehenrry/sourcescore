@@ -5,6 +5,7 @@ const host=document.getElementById('score') as HTMLDivElement;
 host.style.width='1400px';
 const renderer=new ScoreRenderer(host);
 (globalThis as any).renderNativeScore=async(payload:any)=>{
+  host.style.width=`${Math.max(400,payload.width??1400)}px`;
   renderer.setNativePageHeight(payload.height??900);
   const result=await renderer.render({xml:payload.xml,noteIds:payload.noteIds},new Map(payload.notes.map((n:any)=>[n.id,n])),1);
   const svg=host.querySelector('svg')!;

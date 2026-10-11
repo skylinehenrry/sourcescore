@@ -55,6 +55,7 @@ import UniformTypeIdentifiers
   private var playbackGeneration = 0
   private var chosenPlaybackMeasure: Int?
   private var viewportHeight: Double = 900
+  private var viewportWidth: Double = 1400
   private var revision = 0, generation = 0, renderTask: Task<Void, Never>?,
     editTail: Task<Void, Never>?, checkTimer: Timer?
   private var renderBusy = false, needsRender = false
@@ -461,10 +462,13 @@ import UniformTypeIdentifiers
       await renderPage()
     }
   }
-  func setViewportHeight(_ height: Double) {
-    let next = max(200, height / zoom)
-    guard abs(next - viewportHeight) > 15 else { return }
-    viewportHeight = next
+  func setViewportSize(_ size: CGSize) {
+    guard size.width > 0 && size.height > 0 else { return }
+    let width = max(400, size.width / zoom)
+    let height = max(200, size.height / zoom)
+    guard abs(width - viewportWidth) > 8 || abs(height - viewportHeight) > 8 else { return }
+    viewportWidth = width
+    viewportHeight = height
     scheduleRender()
   }
   private func renderPage() async {
@@ -481,7 +485,8 @@ import UniformTypeIdentifiers
       var args: [String: Any] = ["start": page * barsPerPage, "count": barsPerPage]
       if let partId { args["partId"] = partId }
       let payload = try await core.call("page", args)
-      let (scene, pageNotes) = try await engraver.render(payload, height: viewportHeight)
+      let (scene, pageNotes) = try await engraver.render(
+        payload, width: viewportWidth, height: viewportHeight)
       if generation == token && page == currentPage && revision == wanted {
         self.scene = scene
         for note in pageNotes { notes[note.id] = note }

@@ -6,6 +6,8 @@ struct ScoreCanvas: NSViewRepresentable {
   func makeCoordinator() -> Coordinator { Coordinator() }
   func makeNSView(context: Context) -> NSScrollView {
     let scroll = NSScrollView()
+    scroll.setContentHuggingPriority(.defaultLow, for: .horizontal)
+    scroll.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
     scroll.hasVerticalScroller = true
     scroll.hasHorizontalScroller = true
     scroll.drawsBackground = true
@@ -19,7 +21,7 @@ struct ScoreCanvas: NSViewRepresentable {
   func updateNSView(_ scroll: NSScrollView, context: Context) {
     let canvas = scroll.documentView as! CanvasView
     canvas.model = model
-    model.setViewportHeight(scroll.contentSize.height)
+    model.setViewportSize(scroll.contentSize)
     let oldPage = canvas.page
     canvas.page = model.page
     canvas.frame.size = CGSize(
@@ -47,18 +49,30 @@ struct ScoreCanvas: NSViewRepresentable {
     }
   }
   final class Coordinator {
-    private var observer: NSObjectProtocol?
+    private var observers: [NSObjectProtocol] = []
     func observe(_ scroll: NSScrollView, model: EditorModel) {
       scroll.contentView.postsBoundsChangedNotifications = true
-      observer = NotificationCenter.default.addObserver(
-        forName: NSView.boundsDidChangeNotification, object: scroll.contentView, queue: .main
-      ) { [weak scroll, weak model] _ in
-        Task { @MainActor in
-          if let scroll { model?.setViewportHeight(scroll.contentSize.height) }
-        }
+      scroll.contentView.postsFrameChangedNotifications = true
+      scroll.postsFrameChangedNotifications = true
+      for (name, view) in [
+        (NSView.boundsDidChangeNotification, scroll.contentView as NSView),
+        (NSView.frameDidChangeNotification, scroll.contentView as NSView),
+        (NSView.frameDidChangeNotification, scroll as NSView),
+      ] {
+        observers.append(NotificationCenter.default.addObserver(
+          forName: name, object: view, queue: .main
+        ) { [weak scroll, weak model] _ in
+          Task { @MainActor in
+            if let scroll { model?.setViewportSize(scroll.contentSize) }
+          }
+        })
       }
     }
-    deinit { if let observer { NotificationCenter.default.removeObserver(observer) } }
+    deinit {
+      for observer in observers {
+        NotificationCenter.default.removeObserver(observer)
+      }
+    }
   }
 }
 final class CanvasView: NSView {

@@ -1,6 +1,6 @@
 # SourceScore
 
-A native macOS graphical MusicXML editor that keeps the original XML authoritative. Version 0.4.1 uses **SwiftUI and AppKit**, a white minimal interface and a native Core Graphics score canvas. It now supports composition entry and a broader notation inspector. Launch `releases/SourceScore.app` directly; no command file, development server or account is needed.
+A native macOS graphical MusicXML editor that keeps the original XML authoritative. Version 0.4.2 uses **SwiftUI and AppKit**, a white minimal interface and a native Core Graphics score canvas. It supports composition entry and a broader notation inspector. Launch `releases/SourceScore.app` directly; no command file, development server or account is needed.
 
 The Swift frontend is in `native/Sources/SourceScore`; the preserving MusicXML engine is in `src/core`. The app is a build of these sources. Full MuseScore/Dorico editing parity is an ongoing target, **not a completed claim**. See [the capability matrix and remaining work](docs/FULL_EDITOR.md).
 
@@ -30,7 +30,8 @@ The result is `releases/SourceScore.app`. `npm run desktop:dev` builds and opens
 - **Notation** lists musical objects in the selected bar. Add/edit/delete dynamics, text, tempo, lyrics, articulations, ornaments, techniques and fermatas. Cmd-click endpoints to add ties, slurs, hairpins, pedal/octave lines, glissandi or slides. Paired endpoints are deleted together. Existing musical scalar properties are grouped; pitch stays in the coordinated Notes editor.
 - **Bar** changes clef, staff key, score meter and barline/repeat; creates voices and inserts/deletes bars across instruments. Click empty staff space to select its bar. Ordinary empty bars fit a new meter, including voice backups. Music retains its rhythm; undo a meter change that creates unresolved timing issues. Automatic rebar of existing music is outstanding.
 - **Cmd+C/X/V** copies/cuts one continuous staff/voice passage and pastes into a sufficiently large ordinary rest. This currently uses written pitch and a SourceScore clipboard; multi-voice/cross-bar replacement and complete span copying are outstanding.
-- Instrument isolation, source measure labels, zoom, diagnostics and optional panels keep the main score view simple. Equal gaps between instruments distribute available vertical space, while retaining the internal spacing of multi-staff instruments and the room required by dense notation. Dense pages remain scrollable.
+- Instrument isolation, source measure labels, zoom, diagnostics and optional panels keep the main score view simple. The score reflows to the available canvas width when the window, panels or zoom change. Equal gaps between instruments distribute available vertical space, while retaining the internal spacing of multi-staff instruments and the room required by dense notation. Dense pages remain scrollable.
+- One app session runs at a time, including when launching another copy of the app bundle. A second launch brings the running editor forward. A kernel lock releases automatically on normal quit or a crash; it does not alter the MusicXML document.
 
 ## Responsiveness
 
