@@ -32,8 +32,14 @@ import WebKit
     object["height"] = height
     let result =
       try await webView.callAsyncJavaScript(
-        "return await window.renderNativeScore(payload);", arguments: ["payload": object], in: nil,
+        "try { return await window.renderNativeScore(payload); } catch (e) { return {renderError: String((e && e.message) || e), renderStack: String((e && e.stack) || '')}; }", arguments: ["payload": object], in: nil,
         contentWorld: .page) as! [String: Any]
+    if let message = result["renderError"] as? String {
+      throw NSError(domain: "SourceScore.render", code: 1, userInfo: [
+        NSLocalizedDescriptionKey: "The score display could not update: \(message)",
+        "JavaScriptStack": result["renderStack"] as? String ?? "",
+      ])
+    }
     let scene = try VectorScene.parse(result["svg"] as! String)
     scene.revision = result["revision"] as? Int ?? 0
     scene.startMeasure = result["start"] as? Int ?? 0

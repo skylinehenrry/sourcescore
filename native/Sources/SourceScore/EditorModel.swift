@@ -510,7 +510,11 @@ import UniformTypeIdentifiers
       } else {
         needsRender = true
       }
-    } catch { if generation == token { self.error = errorMessage(error) } }
+    } catch {
+      if generation == token && page == currentPage && revision == wanted && !Task.isCancelled {
+        self.error = errorMessage(error)
+      }
+    }
     renderBusy = false
     rendering = false
     if needsRender {

@@ -5,6 +5,7 @@ import { PitchLinks, tieTypes, tiedElements, nextFret } from './pitch-links';
 import { automaticAccidental,printedAccidentalPatches,structuralAccidentals } from './accidentals';
 import {captureIdentities,restoreIdentities,patchedIdentities,type IdentitySnapshot} from './identity';
 import {StructureEditor,inheritedAttributes,type StructuralEdit} from './structure';
+import {octaveShiftContext} from './render-spans';
 
 const order = ['grace','cue','chord','pitch','unpitched','rest','duration','tie','instrument','footnote','level','voice','type','dot','accidental','time-modification','stem','notehead','notehead-text','staff','beam','notations','lyric','play','listen'];
 const accidentals: Record<number,string> = { '-2':'flat-flat','-1':'flat','0':'natural','1':'sharp','2':'double-sharp' };
@@ -187,9 +188,11 @@ export class FastDocument {
     const noteIds:string[]=[];
     for(const part of model.parts.filter(p=>!partId||p.id===partId)) {
       xml+=source.slice(part.node.start,part.node.openEnd);
-      for(const [i,measure] of part.measures.slice(start,start+count).entries()) {
+      const visible=part.measures.slice(start,start+count),spans=octaveShiftContext(source,part,start,count);
+      for(const [i,measure] of visible.entries()) {
         let raw=this.sourceRange(measure.node.start,measure.node.end);
-        if(i===0&&start>0&&measure.renderAttributes.length) {const tag=qualified(measure.node,'attributes'),at=measure.node.openEnd-measure.node.start;raw=raw.slice(0,at)+`<${tag}>${inheritedAttributes(measure.renderAttributes)}</${tag}>`+raw.slice(at);}
+        if(i===0) {const tag=qualified(measure.node,'attributes'),at=measure.node.openEnd-measure.node.start;const attributes=start>0&&measure.renderAttributes.length?`<${tag}>${inheritedAttributes(measure.renderAttributes)}</${tag}>`:'';raw=raw.slice(0,at)+attributes+spans.opening+raw.slice(at);}
+        if(i===visible.length-1&&spans.closing) {const at=raw.lastIndexOf(`</${measure.node.name}>`);raw=raw.slice(0,at)+spans.closing+raw.slice(at);}
         xml+=raw;noteIds.push(...measure.notes.map(n=>n.id));
       }
       xml+=`</${part.node.name}>`;
