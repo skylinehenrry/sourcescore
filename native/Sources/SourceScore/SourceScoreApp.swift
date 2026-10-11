@@ -7,6 +7,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
   private var reopenObserver: NSObjectProtocol?
   private var pendingFiles: [String] = []
   private weak var editorWindow: NSWindow?
+  var scoreWindow: NSWindow? { editorWindow }
   private var openingEditor = false
   var openEditorWindow: (() -> Void)?
   func applicationDidFinishLaunching(_ notification: Notification) {

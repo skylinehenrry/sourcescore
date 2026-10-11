@@ -819,7 +819,7 @@ import UniformTypeIdentifiers
     }
   }
   func updateTitle() {
-    let window = NSApp.windows.first { $0.delegate is AppDelegate }
+    let window = NSApp.windows.compactMap { ($0.delegate as? AppDelegate)?.scoreWindow }.first
     window?.title = displayName + (dirty ? " • Edited" : "")
     window?.isDocumentEdited = dirty
   }
