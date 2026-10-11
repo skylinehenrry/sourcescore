@@ -13,12 +13,16 @@ import Foundation
     var report: [[String: Any]] = []
     for patch in library.patches {
       let program = patch.programs.first ?? 0
-      let note = [43: 48, 42: 60, 41: 60, 58: 45, 70: 55, 60: 60, 73: 74, 72: 84, 47: 48, 12: 60][program] ?? 69
+      // SINE names middle C C3. Combined percussion uses discrete keys, not GM kits.
+      let percussionNotes = ["Drums": 36, "Unpitched metals": 36, "Percussion": 64]
+      let note = percussionNotes[patch.name] ?? (patch.name.lowercased().contains("contrabassoon") ? 36
+        : [43: 48, 42: 60, 41: 60, 58: 45, 70: 55, 60: 60, 73: 74, 72: 84, 47: 48, 12: 60][program] ?? 69
+      )
       let samples = try AudioRack.sample(program: program,
         patch: patch, preset: library.preset(patch), note: note)
       let energy = samples.reduce(0.0) { $0 + Double($1 * $1) } / Double(samples.count)
       try require(energy > 0.00000001, "SINE produced no audio for \(patch.name)")
-      report.append(["sound": patch.name, "frames": samples.count, "meanSquare": energy])
+      report.append(["sound": patch.name, "midiNote": patch.fixedMidi ?? note, "frames": samples.count, "meanSquare": energy])
       print("PASS SINE audio: \(patch.name)")
     }
     let patch = library.patches.first!

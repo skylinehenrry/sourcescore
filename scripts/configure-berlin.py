@@ -25,6 +25,9 @@ def installed(position):
 def mapping(title):
     name = title.lower()
     solo = "solo" in name
+    if name in ["drums", "unpitched metals", "percussion"]:
+        # These mixed patches do not use GM drum keys; select/map them explicitly.
+        return [], [], True
     if "string ensemble" in name:
         return [48, 49], ["string ensemble", "strings", "archi"], False
     if "violin" in name:
@@ -33,6 +36,8 @@ def mapping(title):
         return [41], ["viola"], False
     if "cello" in name or "celli" in name:
         return ([] if solo else [42]), (["solo cello", "cello solo"] if solo else ["cello", "celli", "violoncello"]), False
+    if "contrabassoon" in name:
+        return [], ["contrabassoon", "contrafagotto"], False
     if any(word in name for word in ["basses", "double bass", "contrabass"]):
         return [43], ["double bass", "contrabass", "basses"], False
     if "harp" in name:
@@ -133,7 +138,7 @@ def configure(template_path, directory, replace=False):
         programs, aliases, percussion = mapping(row["title"])
         entries.append(dict(id="berlin:" + row["instrument_id"], name=row["title"], preset=file_name, programs=programs, aliases=aliases,
             percussion=percussion, articulationKeys=keys, dynamicsCC=1))
-        if percussion:
+        if percussion and row["title"].lower() not in ["drums", "unpitched metals", "percussion"]:
             entries[-1]["fixedMidi"] = 60
     temporary = directory / "index.json.tmp"
     temporary.write_text(json.dumps(entries, indent=2) + "\n")

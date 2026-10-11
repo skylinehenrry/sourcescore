@@ -21,6 +21,8 @@ The configuration files live in `~/Library/Application Support/SourceScore/Sound
 
 Sustained and short notes, pizzicato directions and tremolo markings select corresponding preset articulations where present. MusicXML dynamic levels drive velocity and SINE's dynamics controller; mixer gain and pan apply afterward. Notes outside a library's recorded range can still be silent or sound less natural. Advanced slur-driven legato, hairpin curves, trills/ornament synthesis, repeat navigation and comprehensive percussion mappings remain further work. This is a score-preview integration rather than VSL/Dorico playback parity.
 
+The Drums, Unpitched metals and Percussion patches use discrete instrument keys rather than General MIDI drum-kit mapping. They are available for manual selection; scores that require GM percussion can retain the built-in kit. See the [vendor's instrument ranges](https://orchestraltools.helpscoutdocs.com/article/514-berlin-free-orchestra) when selecting a playable note or adjusting a preset.
+
 `npm run desktop:sine:test` renders each configured sound through SINE and verifies real audio plus mute/solo silence. It requires a licensed, installed library and local presets. `npm run desktop:test` checks the built-in renderer and preserving MusicXML bridge, including unpitched notes and articulation extraction.
 
 SINE's [library guide](https://orchestraltools.helpscoutdocs.com/article/303-how-to-use-the-library-view), [preset controls](https://orchestraltools.helpscoutdocs.com/article/300-header-toolbar) and [articulation guide](https://orchestraltools.helpscoutdocs.com/article/301-loaded-articulations) describe the player's own setup and mapping options.
